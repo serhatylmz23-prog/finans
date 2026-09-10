@@ -1,0 +1,32 @@
+{
+  "passive": {
+    "label": "Pasif",
+    "color": "#C0C0C0",
+    "animation": "none"
+  },
+  "active": {
+    "label": "Aktif",
+    "color": "#0D6EFD",
+    "animation": "pulse"
+  },
+  "processing": {
+    "label": "İşleniyor",
+    "color": "#FF9D00",
+    "animation": "spin"
+  },
+  "completed": {
+    "label": "Tamamlandı",
+    "color": "#22C55E",
+    "animation": "complete"
+  },
+  "warning": {
+    "label": "Uyarı",
+    "color": "#FACC15",
+    "animation": "warning"
+  },
+  "critical": {
+    "label": "Kritik",
+    "color": "#C00000",
+    "animation": "alarm"
+  }
+}

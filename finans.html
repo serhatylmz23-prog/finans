@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SyFinansOtağı - Canlı Finans Merkezi</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --accent: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #cbd5e1;
+      --bright: #ffffff;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+    }
+    .container { max-width: 1350px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; color: var(--bright); margin: 0; }
+    h2 { font-size: 1.15rem; color: var(--bright); margin: 20px 0 10px 0; }
+    h3 { font-size: 0.95rem; color: #94a3b8; margin: 0; font-weight: 500; }
+    
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+    .price-tag { font-size: 1.6rem; font-weight: 700; color: var(--accent); margin: 6px 0; }
+    
+    .btn { background: #10b981; color: white; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+    .btn-danger { background: #ef4444; }
+    .btn-warning { background: #f59e0b; color: #0f172a; }
+    
+    .upload-box { border: 2px dashed var(--border); border-radius: 8px; padding: 16px; text-align: center; background: var(--card); margin-bottom: 20px; }
+    .manual-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .manual-box input { background: #0f172a; border: 1px solid var(--border); color: #fff; padding: 7px 10px; border-radius: 5px; font-size: 13px; }
+    
+    /* SABİT VE TIKLANABİLİR SIRALAMA BAŞLIKLARI */
+    .table-container {
+      max-height: 540px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+    }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #1e293b;
+      color: var(--bright);
+      padding: 12px 10px;
+      border-bottom: 2px solid var(--border);
+      z-index: 10;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      user-select: none;
+    }
+    thead th.sortable {
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    thead th.sortable:hover {
+      background: #334155;
+      color: var(--accent);
+    }
+    tbody td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13.5px;
+    }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+    .signal-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .signal-sat { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .signal-koru { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .signal-stop { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+    .sparkline { width: 75px; height: 24px; vertical-align: middle; }
+    .action-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+      <h1>SyFinansOtağı Finans Merkezi</h1>
+      <span id="syncStatus" style="color: #10b981; font-weight: 600;">● Canlı Veri Aktif</span>
+    </div>
+
+    <!-- PİYASALAR -->
+    <div class="grid">
+      <div class="card">
+        <h3>Dolar / TL (TCMB)</h3>
+        <div class="price-tag" id="usdPrice">₺--.--</div>
+        <small id="usdMeta">Bağlanıyor...</small>
+      </div>
+      <div class="card">
+        <h3>Gram Altın (24K)</h3>
+        <div class="price-tag" id="goldGramPrice">₺--.--</div>
+        <small id="goldMeta">Bağlanıyor...</small>
+      </div>
+      <div class="card">
+        <h3>Çeyrek Altın</h3>
+        <div class="price-tag" id="goldCeyrekPrice">₺--.--</div>
+        <small>Kapalıçarşı / Piyasa</small>
+      </div>
+      <div class="card">
+        <h3>BIST 100</h3>
+        <div class="price-tag" id="bistPrice">--.--</div>
+        <small id="bistMeta">Endeks</small>
+      </div>
+    </div>
+
+    <!-- HIZLI İŞLEM ALANLARI -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+      <div class="upload-box">
+        <h3 style="margin-bottom:8px; color:#fff;">Ekran Görüntüsü / Video Yükle</h3>
+        <input type="file" id="portfoyInput" accept="image/*,video/*" multiple style="margin-bottom: 10px; font-size:12px;"><br>
+        <button class="btn" onclick="gorselYukle()">Analiz Et ve Kasaya Ekle</button>
+      </div>
+
+      <div class="manual-box">
+        <h3 style="width:100%; margin-bottom:4px; color:#fff;">Hızlı Manuel Varlık Ekle</h3>
+        <input type="text" id="manSembol" placeholder="Sembol (THYAO, TTE, USD)" style="flex:1;">
+        <input type="number" id="manAdet" placeholder="Adet" style="width:70px;">
+        <input type="number" id="manMaliyet" placeholder="Maliyet ₺" style="width:90px;">
+        <button class="btn" onclick="manuelEkle()">Ekle</button>
+      </div>
+    </div>
+
+    <!-- KASAM VE ANALİZLER (SIRALANABİLİR & SABİT BAŞLIKLI TABLO) -->
+    <h2>Kasam ve Al/Sat Stratejileri</h2>
+    <div class="action-bar">
+      <button class="btn btn-warning" onclick="secilenleriSil()">Seçilenleri Sil</button>
+      <button class="btn btn-danger" onclick="kasaSifirla()">Tüm Kasayı Temizle</button>
+      <span style="font-size:12px; color:#94a3b8; margin-left:auto;">💡 Sütun başlıklarına tıklayarak <b>artan / azalan</b> sıralama yapabilirsiniz.</span>
+    </div>
+
+    <div class="table-container">
+      <table id="kasaTable">
+        <thead>
+          <tr>
+            <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+            <th class="sortable" onclick="sirala('sembol')">Varlık <span id="sort_sembol">↕</span></th>
+            <th class="sortable" onclick="sirala('adet')">Adet <span id="sort_adet">↕</span></th>
+            <th class="sortable" onclick="sirala('maliyet')">Birim Maliyet <span id="sort_maliyet">↕</span></th>
+            <th class="sortable" onclick="sirala('canli_fiyat')">Canlı Fiyat <span id="sort_canli_fiyat">↕</span></th>
+            <th class="sortable" onclick="sirala('kar_zarar_yuzde')">K/Z (%) <span id="sort_kar_zarar_yuzde">↕</span></th>
+            <th>7G Trend</th>
+            <th class="sortable" onclick="sirala('aylik_num')">1 Aylık (TEFAS) <span id="sort_aylik_num">↕</span></th>
+            <th class="sortable" onclick="sirala('yillik_num')">1 Yıllık (TEFAS) <span id="sort_yillik_num">↕</span></th>
+            <th class="sortable" onclick="sirala('toplam_deger')">Toplam Tutar <span id="sort_toplam_deger">↕</span></th>
+            <th class="sortable" onclick="sirala('tavsiye')">Ajan Kararı <span id="sort_tavsiye">↕</span></th>
+            <th class="sortable" onclick="sirala('guven_endeksi')">Güven <span id="sort_guven_endeksi">↕</span></th>
+            <th>İşlem</th>
+          </tr>
+        </thead>
+        <tbody id="kasaTablosu">
+          <tr><td colspan="13" style="text-align:center;">Veriler yükleniyor...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let globalKasaVerisi = [];
+    let aktifSiralamaSutunu = null;
+    let aktifSiralamaYonu = 1; // 1: Artan, -1: Azalan
+
+    function generateSparkline(isKar) {
+      const color = isKar ? '#10b981' : '#ef4444';
+      const points = isKar ? "0,20 20,16 40,18 60,10 80,4" : "0,6 20,10 40,8 60,18 80,22";
+      return `<svg class="sparkline" viewBox="0 0 80 26"><polyline fill="none" stroke="${color}" stroke-width="2.5" points="${points}"/></svg>`;
+    }
+
+    async function piyasalariGuncelle() {
+      try {
+        const res = await fetch('/api/piyasa/ozet');
+        const data = await res.json();
+
+        if (data.doviz && data.doviz.fiyat) {
+          document.getElementById('usdPrice').innerText = '₺' + Number(data.doviz.fiyat).toFixed(2);
+          document.getElementById('usdMeta').innerText = `${data.doviz.kaynak}`;
+        }
+        if (data.altin && data.altin.gram) {
+          document.getElementById('goldGramPrice').innerText = '₺' + Number(data.altin.gram).toFixed(2);
+          document.getElementById('goldCeyrekPrice').innerText = '₺' + Number(data.altin.ceyrek).toFixed(2);
+          document.getElementById('goldMeta').innerText = `${data.altin.kaynak}`;
+        }
+        if (data.bist && data.bist.fiyat) {
+          document.getElementById('bistPrice').innerText = Number(data.bist.fiyat).toLocaleString('tr-TR');
+          document.getElementById('bistMeta').innerText = `${data.bist.kaynak}`;
+        }
+      } catch (err) {
+        console.error("Piyasa verisi çekilemedi:", err);
+      }
+    }
+
+    async function kasaAnaliziGetir() {
+      try {
+        // Yenilenmeden önce işaretli olan checkbox ID'lerini hafızaya al
+        const seciliIdler = new Set(
+          Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.value)
+        );
+
+        const res = await fetch('/api/kasa/analiz');
+        const data = await res.json();
+        const tbody = document.getElementById('kasaTablosu');
+
+        if (!data.kasa_analizi || data.kasa_analizi.length === 0) {
+          globalKasaVerisi = [];
+          tbody.innerHTML = '<tr><td colspan="13" style="text-align:center; padding:24px; color:#94a3b8;">Kasada kayıtlı varlık yok. Yukarıdan görsel yükleyebilir veya manuel ekleyebilirsiniz.</td></tr>';
+          return;
+        }
+
+        // Sayısal değerleri sıralama için ayrıştır
+        globalKasaVerisi = data.kasa_analizi.map(item => ({
+          ...item,
+          aylik_num: parseFloat(String(item.aylik_getiri).replace('%', '').replace(',', '.')) || -9999,
+          yillik_num: parseFloat(String(item.yillik_getiri).replace('%', '').replace(',', '.')) || -9999
+        }));
+
+        // Eğer kullanıcı daha önce bir sıralama seçtiyse, yeni gelen veriyi o sıraya sok
+        if (aktifSiralamaSutunu) {
+          diziyiSirala(aktifSiralamaSutunu, aktifSiralamaYonu);
+        }
+
+        tabloyuCiz(seciliIdler);
+      } catch (err) {
+        console.error("Kasa tablosu hatası:", err);
+      }
+    }
+
+    function sirala(sutun) {
+      if (aktifSiralamaSutunu === sutun) {
+        aktifSiralamaYonu *= -1; // Yönü tersine çevir
+      } else {
+        aktifSiralamaSutunu = sutun;
+        aktifSiralamaYonu = 1; // Yeni sütunda ilk tıklama: Artan
+      }
+
+      // Başlık ikonlarını güncelle
+      document.querySelectorAll('thead th.sortable span').forEach(el => el.innerText = '↕');
+      const aktifIcon = document.getElementById(`sort_${sutun}`);
+      if (aktifIcon) {
+        aktifIcon.innerText = aktifSiralamaYonu === 1 ? '▲' : '▼';
+      }
+
+      // Seçili kutuları koruyarak sırala ve çiz
+      const seciliIdler = new Set(
+        Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.value)
+      );
+
+      diziyiSirala(aktifSiralamaSutunu, aktifSiralamaYonu);
+      tabloyuCiz(seciliIdler);
+    }
+
+    function diziyiSirala(sutun, yon) {
+      globalKasaVerisi.sort((a, b) => {
+        let valA = a[sutun];
+        let valB = b[sutun];
+
+        if (typeof valA === 'string') {
+          return valA.localeCompare(valB, 'tr') * yon;
+        }
+        return (valA - valB) * yon;
+      });
+    }
+
+    function tabloyuCiz(seciliIdler = new Set()) {
+      const tbody = document.getElementById('kasaTablosu');
+      tbody.innerHTML = '';
+
+      globalKasaVerisi.forEach(row => {
+        const isKar = row.kar_zarar_yuzde >= 0;
+        let badgeClass = 'signal-koru';
+        if (row.tavsiye.includes('SAT')) badgeClass = 'signal-sat';
+        if (row.tavsiye.includes('STOP') || row.tavsiye.includes('DİKKAT')) badgeClass = 'signal-stop';
+
+        const isChecked = seciliIdler.has(row.id) ? 'checked' : '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input type="checkbox" class="row-checkbox" value="${row.id}" ${isChecked}></td>
+          <td><strong>${row.sembol}</strong></td>
+          <td>${row.adet}</td>
+          <td>₺${Number(row.maliyet).toFixed(2)}</td>
+          <td style="font-weight:700; color:#fff;">₺${Number(row.canli_fiyat).toFixed(2)}</td>
+          <td style="color:${isKar ? '#10b981' : '#ef4444'}; font-weight:700;">${isKar ? '+' : ''}%${row.kar_zarar_yuzde}</td>
+          <td>${generateSparkline(isKar)}</td>
+          <td style="color:#10b981; font-weight:600;">${row.aylik_getiri}</td>
+          <td style="color:#10b981; font-weight:600;">${row.yillik_getiri}</td>
+          <td style="font-weight:600;">₺${Number(row.toplam_deger).toLocaleString('tr-TR')}</td>
+          <td><span class="signal-badge ${badgeClass}">${row.tavsiye}</span><br><small style="color:#94a3b8;">${row.aksiyon_plani}</small></td>
+          <td>%${row.guven_endeksi}</td>
+          <td><button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="tekilSil('${row.id}')">Sil</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function gorselYukle() {
+      const input = document.getElementById('portfoyInput');
+      if (!input.files || input.files.length === 0) {
+        alert("Lütfen en az bir resim seçin!");
+        return;
+      }
+      const formData = new FormData();
+      for (let i = 0; i < input.files.length; i++) {
+        formData.append("files", input.files[i]);
+      }
+      const res = await fetch('/api/kasa/gorsel-aktar', { method: 'POST', body: formData });
+      const data = await res.json();
+      alert(`${data.eklenen_adet} yeni varlık kasaya aktarıldı.`);
+      input.value = "";
+      kasaAnaliziGetir();
+    }
+
+    async function manuelEkle() {
+      const sembol = document.getElementById('manSembol').value;
+      const adet = parseFloat(document.getElementById('manAdet').value);
+      const maliyet = parseFloat(document.getElementById('manMaliyet').value) || 0.0;
+
+      if (!sembol || !adet) {
+        alert("Lütfen en azından sembol ve adet girin!");
+        return;
+      }
+
+      await fetch('/api/kasa/manuel-ekle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sembol, adet, maliyet })
+      });
+
+      document.getElementById('manSembol').value = "";
+      document.getElementById('manAdet').value = "";
+      document.getElementById('manMaliyet').value = "";
+      kasaAnaliziGetir();
+    }
+
+    function toggleSelectAll(master) {
+      document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = master.checked);
+    }
+
+    async function secilenleriSil() {
+      const secilenler = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.value);
+      if (secilenler.length === 0) {
+        alert("Lütfen silmek istediğiniz varlıkları işaretleyin.");
+        return;
+      }
+      if (confirm(`${secilenler.length} adet varlığı silmek istiyor musunuz?`)) {
+        await fetch('/api/kasa/sil', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idler: secilenler })
+        });
+        document.getElementById('selectAll').checked = false;
+        kasaAnaliziGetir();
+      }
+    }
+
+    async function tekilSil(id) {
+      if (confirm("Bu varlığı silmek istiyor musunuz?")) {
+        await fetch('/api/kasa/sil', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idler: [id] })
+        });
+        kasaAnaliziGetir();
+      }
+    }
+
+    async function kasaSifirla() {
+      if (confirm("Kasadaki tüm verileri temizlemek istediğinize emin misiniz?")) {
+        await fetch('/api/kasa/sifirla', { method: 'DELETE' });
+        kasaAnaliziGetir();
+      }
+    }
+
+    // İlk açılış yüklemeleri
+    piyasalariGuncelle();
+    kasaAnaliziGetir();
+    
+    // Periyodik döngüler (Titremeyi ve zıplamayı önleyen kararlı süreler)
+    setInterval(piyasalariGuncelle, 5000);
+    setInterval(kasaAnaliziGetir, 8000);
+  </script>
+</body>
+</html>

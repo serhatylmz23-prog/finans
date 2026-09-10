@@ -1,0 +1,134 @@
+## Kod
+
+[SYK_ICON_ENGINE_SYFINANSOTAGI_v0.1.zip](sandbox:/mnt/data/SYK_ICON_ENGINE_SYFINANSOTAGI_v0.1.zip)
+
+[SHA-256 kaydı](sandbox:/mnt/data/SYK_ICON_ENGINE_SYFINANSOTAGI_v0.1.zip.sha256)
+
+## Enter
+
+```powershell
+cd SYK_ICON_ENGINE_SYFINANSOTAGI_v0.1
+```
+
+Test:
+
+```powershell
+npm test
+```
+
+## Sonuç
+
+```text
+SYK_ICON_ENGINE_SYFINANSOTAGI_TEST_OK
+```
+
+Oluşturulan modül:
+
+```text
+SyFinansOtağı
+│
+├── Piyasa
+│   ├── BIST
+│   ├── Fonlar
+│   ├── Döviz
+│   ├── Kıymetli Madenler
+│   └── Piyasa Gündemi
+│
+├── Kasam
+│
+├── Analiz
+│
+├── Planlar
+│
+├── Uyarılar
+│
+└── Finans Araştırması
+```
+
+Kod yapısı:
+
+```text
+SYK_ICON_ENGINE_SYFINANSOTAGI_v0.1
+
+├── core
+│   ├── icon-engine.js
+│   └── states.json
+│
+├── modules
+│   └── syfinansotagi
+│       ├── registry.json
+│       ├── symbols.json
+│       └── component.js
+│
+├── tests
+└── MANIFEST.json
+```
+
+Dinamik durum motoru:
+
+```text
+PASİF
+→ Modül beklemede
+
+AKTİF
+→ Veri akışı ve kullanım açık
+
+İŞLENİYOR
+→ Analiz/veri hesaplama devam ediyor
+
+TAMAMLANDI
+→ Sonuç doğrulandı
+
+UYARI
+→ Takip edilmesi gereken durum
+
+KRİTİK
+→ Risk veya hata durumu
+```
+
+Finans ikon aile mantığı:
+
+```text
+BIST
+→ mum grafik + piyasa akışı
+
+Fonlar
+→ dağılım halkası + portföy
+
+Döviz
+→ kur sembolü + değişim oku
+
+Kıymetli Madenler
+→ metal + değer kasası
+
+Piyasa Gündemi
+→ dünya + haber akışı
+
+Kasam
+→ kişisel varlık merkezi
+
+Analiz
+→ grafik + mercek
+
+Planlar
+→ hedef + yol haritası
+
+Uyarılar
+→ alarm + bildirim
+
+Finans Araştırması
+→ veri + kaynak + yapay zeka
+```
+
+SHA-256:
+
+```text
+7ba085db4ac5174a48b093f10cb54e31404e26f6bc8f6a00d5a35d8d1ff64121
+```
+
+## Gelişim yüzdesi
+
+**SyFinansOtağı ikon ana kategorileri: %100**
+**SYK_ICON_ENGINE ortak çekirdeği: %75**
+
+Sonraki aşamada bu ana kategorilerin altındaki **BIST → Hisseler, Endeksler, Sektörler, KAP, Piyasa Derinliği** gibi alt ikonları aynı finans diliyle genişletebiliriz.

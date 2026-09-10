@@ -1,0 +1,227 @@
+:root {
+  --syk-finance-bg: #071018;
+  --syk-finance-panel: rgba(8,18,27,.80);
+  --syk-finance-silver: #c8cdd1;
+  --syk-finance-bronze: #b9823f;
+  --syk-finance-blue: #168dff;
+  --syk-finance-green: #69cf76;
+  --syk-finance-red: #ef6b64;
+  --syk-finance-amber: #e7b44f;
+  --syk-finance-system: #53d59f;
+  --syk-finance-risk: #e7b44f;
+  --syk-finance-progress: 0%;
+  --syk-finance-confidence: 0%;
+  --syk-finance-notifications: "0";
+}
+
+[data-syk-system-state="offline"] { --syk-finance-system: #7b858b; }
+[data-syk-system-state="standby"] { --syk-finance-system: #7db4d4; }
+[data-syk-system-state="active"] { --syk-finance-system: #53d59f; }
+[data-syk-system-state="warning"] { --syk-finance-system: #e8b14e; }
+[data-syk-system-state="critical"] { --syk-finance-system: #ef5a4f; }
+
+[data-syk-risk-level="low"] { --syk-finance-risk: #69cf76; }
+[data-syk-risk-level="medium"] { --syk-finance-risk: #e7b44f; }
+[data-syk-risk-level="high"] { --syk-finance-risk: #ef8a55; }
+[data-syk-risk-level="critical"] { --syk-finance-risk: #ef5a4f; }
+
+[data-syk-order-state="buy"] { --syk-finance-order: #69cf76; }
+[data-syk-order-state="sell"] { --syk-finance-order: #ef6b64; }
+[data-syk-order-state="hold"] { --syk-finance-order: #d6b45e; }
+[data-syk-order-state="pending"] { --syk-finance-order: #68b8ff; }
+[data-syk-order-state="completed"] { --syk-finance-order: #53d59f; }
+[data-syk-order-state="stopped"] { --syk-finance-order: #ef5a4f; }
+
+.syk-finance {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 720px;
+  border-radius: 24px;
+  background: var(--syk-finance-bg);
+}
+
+.syk-finance__base {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -4;
+}
+
+.syk-finance__energy,
+.syk-finance__market-pulse,
+.syk-finance__risk-pulse {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.syk-finance__energy {
+  z-index: -3;
+  background:
+    radial-gradient(circle at 50% 50%,
+      color-mix(in srgb, var(--syk-finance-blue) 18%, transparent),
+      transparent 48%);
+  animation: syk-finance-breathe 6s ease-in-out infinite;
+}
+
+.syk-finance__market-pulse {
+  z-index: -2;
+  background:
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      transparent 0 7%,
+      color-mix(in srgb, var(--syk-finance-system) 12%, transparent) 7.4% 7.8%,
+      transparent 8.2% 14%
+    );
+  opacity: .35;
+  animation: syk-finance-market-pulse 8s ease-in-out infinite;
+}
+
+.syk-finance__risk-pulse {
+  z-index: -1;
+  background:
+    radial-gradient(circle at 72% 68%,
+      color-mix(in srgb, var(--syk-finance-risk) 20%, transparent),
+      transparent 32%);
+  opacity: .50;
+}
+
+.syk-brand-title {
+  position: absolute;
+  left: 3%;
+  top: 3%;
+  max-width: 72%;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 5vw, 5.2rem);
+  letter-spacing: .01em;
+  color: var(--syk-finance-silver);
+  text-shadow:
+    0 2px 0 rgba(255,255,255,.10),
+    0 6px 18px rgba(0,0,0,.55),
+    0 0 22px rgba(22,141,255,.18);
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 2px solid color-mix(in srgb, var(--syk-finance-blue) 65%, transparent);
+}
+
+[data-syk-brand-animation="write"] .syk-brand-title:not([hidden]) {
+  animation:
+    syk-brand-write 1.4s steps(24,end) both,
+    syk-brand-caret .8s steps(1,end) infinite;
+}
+
+[data-syk-brand-animation="erase"] .syk-brand-title:not([hidden]) {
+  animation: syk-brand-erase .9s steps(24,end) both;
+}
+
+[data-syk-brand-animation="fade"] .syk-brand-title:not([hidden]) {
+  animation: syk-brand-fade .6s ease both;
+}
+
+[data-syk-brand-visible="false"] .syk-brand-title {
+  display: none;
+}
+
+.syk-finance__status {
+  position: absolute;
+  right: 2.4%;
+  bottom: 2.4%;
+  min-width: 285px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(5,10,15,.76);
+  border: 1px solid color-mix(in srgb, var(--syk-finance-system) 55%, transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--syk-finance-system) 22%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.syk-finance__status strong {
+  color: var(--syk-finance-system);
+}
+
+.syk-finance__bars {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.syk-finance__bar {
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255,255,255,.12);
+}
+
+.syk-finance__bar--progress::after,
+.syk-finance__bar--confidence::after {
+  content: "";
+  display: block;
+  height: 100%;
+}
+
+.syk-finance__bar--progress::after {
+  width: var(--syk-finance-progress);
+  background: linear-gradient(90deg, var(--syk-finance-blue), var(--syk-finance-system));
+}
+
+.syk-finance__bar--confidence::after {
+  width: var(--syk-finance-confidence);
+  background: linear-gradient(90deg, var(--syk-finance-bronze), var(--syk-finance-silver));
+}
+
+.syk-finance__notification {
+  position: absolute;
+  right: 3%;
+  top: 3%;
+  min-width: 36px;
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--syk-finance-red);
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 0 18px rgba(239,107,100,.35);
+}
+
+.syk-finance__notification::after {
+  content: var(--syk-finance-notifications);
+}
+
+[data-syk-motion="reduced"] .syk-finance__energy,
+[data-syk-motion="reduced"] .syk-finance__market-pulse,
+[data-syk-motion="reduced"] .syk-brand-title {
+  animation: none !important;
+}
+
+@keyframes syk-finance-breathe {
+  0%,100% { opacity:.28; transform:scale(.99); }
+  50% { opacity:.64; transform:scale(1.02); }
+}
+
+@keyframes syk-finance-market-pulse {
+  0%,100% { opacity:.18; transform:scale(.96); }
+  50% { opacity:.42; transform:scale(1.04); }
+}
+
+@keyframes syk-brand-write {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes syk-brand-erase {
+  from { width: 100%; }
+  to { width: 0; }
+}
+
+@keyframes syk-brand-caret {
+  50% { border-color: transparent; }
+}
+
+@keyframes syk-brand-fade {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

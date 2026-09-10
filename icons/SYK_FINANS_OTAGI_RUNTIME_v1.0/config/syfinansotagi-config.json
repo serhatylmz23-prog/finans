@@ -1,0 +1,72 @@
+{
+  "brandTitles": {
+    "sykasif": "SyKâşif",
+    "syotagi": "SyOtağı",
+    "syfinansotagi": "SyFinansOtağı"
+  },
+  "marketModules": [
+    "bist",
+    "stock",
+    "fund",
+    "etf",
+    "index",
+    "currency",
+    "gold",
+    "silver",
+    "precious-metals"
+  ],
+  "portfolioModules": [
+    "portfolio",
+    "asset-allocation",
+    "average-cost",
+    "profit-loss",
+    "dividend",
+    "cash",
+    "order-pending",
+    "completed"
+  ],
+  "analysisModules": [
+    "charts",
+    "technical-analysis",
+    "fundamental-analysis",
+    "risk",
+    "confidence",
+    "volatility",
+    "volume",
+    "trend"
+  ],
+  "actionModules": [
+    "buy",
+    "sell",
+    "hold",
+    "alarm",
+    "notification",
+    "target-price",
+    "stop",
+    "watchlist"
+  ],
+  "marketStates": [
+    "preopen",
+    "open",
+    "auction",
+    "closed",
+    "holiday"
+  ],
+  "orderStates": [
+    "idle",
+    "buy",
+    "sell",
+    "hold",
+    "pending",
+    "completed",
+    "stopped"
+  ],
+  "riskLevels": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "confidenceLimit": 99.9,
+  "financialDecisionPolicy": "Decision support only; no autonomous trade execution by default."
+}

@@ -1,0 +1,71 @@
+{
+  "module": "SyFinansOtağı",
+  "engine": "SYK_ICON_ENGINE",
+  "version": "0.1.0",
+  "groups": {
+    "Piyasa": [
+      "BIST",
+      "Fonlar",
+      "Döviz",
+      "Kıymetli Madenler",
+      "Piyasa Gündemi"
+    ],
+    "Kasa": [
+      "Hisselerim",
+      "Fonlarım",
+      "Dövizlerim",
+      "Altınlarım",
+      "Gümüşlerim",
+      "Nakit",
+      "Toplam Varlık",
+      "Ortalama Maliyet",
+      "Kâr-Zarar",
+      "Temettüler"
+    ],
+    "Analiz": [
+      "Genel Görünüm",
+      "Teknik Görünüm",
+      "Temel Görünüm",
+      "Trend",
+      "Grafik",
+      "Risk",
+      "Güven Endeksi",
+      "Kanıt Gücü",
+      "Adaylar",
+      "Piyasa Davranışı",
+      "Maliyet Analizi",
+      "Portföy Dengesi",
+      "Sektör Dağılımı",
+      "Senaryo Karşılaştırması"
+    ],
+    "Planlar": [
+      "Bütçe Dağılımı",
+      "Toplu Yatırım",
+      "Kademeli Alım",
+      "Kademeli Satım",
+      "Hedef Fiyat",
+      "Zarar Durdurma",
+      "Gerçekleşme",
+      "Maliyet Dengeleme",
+      "Plan Takvimi"
+    ],
+    "Uyarılar": [
+      "Fiyat Uyarısı",
+      "KAP Uyarısı",
+      "Haber Uyarısı",
+      "Risk Uyarısı",
+      "Hedef Gerçekleşti",
+      "Kademe Gerçekleşti",
+      "Veri Gecikmesi"
+    ],
+    "Finans Araştırması": [
+      "Varlık İncelemesi",
+      "Kaynak Merkezi",
+      "Veri Sağlayıcıları",
+      "Karar Desteği",
+      "Piyasa Araştırması",
+      "Öğrenme",
+      "Ar-Ge"
+    ]
+  }
+}

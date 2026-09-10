@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SyFinansOtağı Runtime v1.0</title>
+  <link rel="stylesheet" href="../src/syk-finans-otagi-runtime.css">
+  <style>
+    body { margin:0; background:#060a0f; color:#edf3f6; font-family:system-ui,sans-serif; }
+    main { max-width:1500px; margin:auto; padding:22px; }
+    .controls {
+      display:grid;
+      grid-template-columns:repeat(7,minmax(125px,1fr));
+      gap:10px;
+      margin:16px 0;
+    }
+    label { display:grid; gap:6px; color:#adbbc4; font-size:13px; }
+    select,input,button {
+      width:100%;
+      box-sizing:border-box;
+      background:#131a20;
+      color:#edf3f6;
+      border:1px solid #34434d;
+      border-radius:9px;
+      padding:9px;
+    }
+    button { cursor:pointer; }
+    .meta { color:#9fafb8; }
+    @media(max-width:1100px){.controls{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:620px){.controls{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>SyFinansOtağı Runtime</h1>
+  <p class="meta">
+    Ana sembol değişmez; ürün başlığı yazılıp silinebilir ve finans modülleri durum motoruyla yönetilir.
+  </p>
+
+  <section class="controls">
+    <label>Başlık
+      <select id="brand">
+        <option value="syfinansotagi">SyFinansOtağı</option>
+        <option value="sykasif">SyKâşif</option>
+        <option value="syotagi">SyOtağı</option>
+      </select>
+    </label>
+
+    <label>Başlık animasyonu
+      <select id="brandAnimation">
+        <option value="write">Yaz</option>
+        <option value="erase">Sil</option>
+        <option value="fade">Belir</option>
+      </select>
+    </label>
+
+    <label>Modül
+      <select id="module">
+        <option value="bist">Borsa İstanbul</option>
+        <option value="stock">Hisse</option>
+        <option value="fund">Fon</option>
+        <option value="currency">Döviz</option>
+        <option value="portfolio">Portföy</option>
+        <option value="risk">Risk</option>
+        <option value="watchlist">Takip listesi</option>
+      </select>
+    </label>
+
+    <label>Piyasa
+      <select id="market">
+        <option value="preopen">Açılış öncesi</option>
+        <option value="open">Açık</option>
+        <option value="auction">Eşleşme</option>
+        <option value="closed">Kapalı</option>
+        <option value="holiday">Tatil</option>
+      </select>
+    </label>
+
+    <label>İşlem
+      <select id="order">
+        <option value="idle">Beklemede</option>
+        <option value="buy">Al</option>
+        <option value="sell">Sat</option>
+        <option value="hold">Bekle</option>
+        <option value="pending">Emir bekliyor</option>
+        <option value="completed">Tamamlandı</option>
+        <option value="stopped">Stop</option>
+      </select>
+    </label>
+
+    <label>Risk
+      <select id="risk">
+        <option value="low">Düşük</option>
+        <option value="medium">Orta</option>
+        <option value="high">Yüksek</option>
+        <option value="critical">Kritik</option>
+      </select>
+    </label>
+
+    <label>Başlık görünürlüğü
+      <button id="toggleBrand" type="button">Gizle / Göster</button>
+    </label>
+  </section>
+
+  <section class="syk-finance">
+    <img class="syk-finance__base"
+         src="../assets/syfinansotagi-master.png"
+         alt="SyFinansOtağı tasarım sistemi">
+
+    <div class="syk-finance__energy"></div>
+    <div class="syk-finance__market-pulse"></div>
+    <div class="syk-finance__risk-pulse"></div>
+
+    <div id="brandTitle" class="syk-brand-title"></div>
+    <div class="syk-finance__notification"></div>
+
+    <div class="syk-finance__status">
+      <div>SyFinansOtağı</div>
+      <strong id="statusText">AKTİF</strong>
+      <div id="moduleText" style="margin-top:6px;color:#b7c5ce">Modül: Borsa İstanbul</div>
+      <div class="syk-finance__bars">
+        <div class="syk-finance__bar syk-finance__bar--progress"></div>
+        <div class="syk-finance__bar syk-finance__bar--confidence"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+  import {
+    SYKFinansOtagiRuntime,
+    renderBrandTitle
+  } from "../src/syk-finans-otagi-runtime.js";
+
+  const runtime = new SYKFinansOtagiRuntime({
+    progress: 54,
+    confidence: 78.6,
+    notificationCount: 2
+  });
+
+  const brand = document.querySelector("#brand");
+  const brandAnimation = document.querySelector("#brandAnimation");
+  const moduleEl = document.querySelector("#module");
+  const market = document.querySelector("#market");
+  const order = document.querySelector("#order");
+  const risk = document.querySelector("#risk");
+  const toggleBrand = document.querySelector("#toggleBrand");
+  const brandTitle = document.querySelector("#brandTitle");
+  const statusText = document.querySelector("#statusText");
+  const moduleText = document.querySelector("#moduleText");
+
+  renderBrandTitle(brandTitle, runtime);
+
+  let brandVisible = true;
+
+  function update() {
+    runtime.setBrand({
+      brand: brand.value,
+      visible: brandVisible,
+      animation: brandAnimation.value
+    });
+    runtime.setActiveModule(moduleEl.value);
+    runtime.setMarketState(market.value);
+    runtime.setOrderState(order.value);
+    runtime.setRiskLevel(risk.value);
+    runtime.setSystemState("active");
+    runtime.setMetrics({
+      progress: 54,
+      confidence: 78.6,
+      notificationCount: 2
+    });
+
+    statusText.textContent = "AKTİF";
+    moduleText.textContent =
+      `Modül: ${moduleEl.options[moduleEl.selectedIndex].text}`;
+  }
+
+  toggleBrand.addEventListener("click", () => {
+    brandVisible = !brandVisible;
+    runtime.setBrand({
+      brand: brand.value,
+      visible: brandVisible,
+      animation: brandVisible ? "write" : "erase"
+    });
+  });
+
+  [brand, brandAnimation, moduleEl, market, order, risk]
+    .forEach(el => el.addEventListener("input", update));
+
+  update();
+</script>
+</body>
+</html>

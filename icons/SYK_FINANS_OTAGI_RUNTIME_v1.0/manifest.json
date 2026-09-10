@@ -1,0 +1,34 @@
+{
+  "package": "SYK_FINANS_OTAGI_RUNTIME",
+  "version": "1.0.0",
+  "status": "IMPLEMENTATION_READY",
+  "asset_policy": "IMMUTABLE_BASE_WITH_DYNAMIC_TITLE",
+  "base_asset": "assets/syfinansotagi-master.png",
+  "config": "config/syfinansotagi-config.json",
+  "brand_titles": [
+    "SyKâşif",
+    "SyOtağı",
+    "SyFinansOtağı"
+  ],
+  "brand_title_actions": [
+    "write",
+    "erase",
+    "fade",
+    "show",
+    "hide",
+    "switch"
+  ],
+  "dynamic_layers": [
+    "active_module",
+    "market_state",
+    "order_state",
+    "risk_level",
+    "system_state",
+    "progress",
+    "confidence",
+    "notifications",
+    "brand_title"
+  ],
+  "autonomous_trading_included": false,
+  "market_data_connector_included": false
+}
