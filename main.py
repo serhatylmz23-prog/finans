@@ -1,8 +1,8 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import json
 import os
 import uuid
@@ -24,7 +24,6 @@ app.add_middleware(
 
 KASA_DOSYASI = "kasa_verileri.json"
 
-# CANLI VERİ ÖNBELLEĞİ (Arayüzün kilitlenmesini ve gecikmesini önler)
 CACHE_PIYASA = {
     "son_guncelleme": 0,
     "veri": {
@@ -33,6 +32,16 @@ CACHE_PIYASA = {
         "bist": {"sembol": "XU100", "fiyat": 9850.0, "kaynak": "BIST"}
     }
 }
+
+def varlik_turu_belirle(sembol: str) -> str:
+    s = sembol.upper().strip()
+    if any(k in s for k in ["USD", "EUR", "GBP", "DOVIZ", "DÖVİZ"]):
+        return "Dövizlerim"
+    if any(k in s for k in ["ALTIN", "CEYREK", "ÇEYREK", "GUMUS", "GÜMÜŞ", "XAG", "XAU"]):
+        return "Kıymetli madenlerim"
+    if len(s) == 3 and not s.endswith("IS"):
+        return "Fonlarım"
+    return "Hisselerim"
 
 def kasa_oku():
     if os.path.exists(KASA_DOSYASI):
@@ -54,11 +63,11 @@ class ManuelVarlik(BaseModel):
     sembol: str
     adet: float
     maliyet: float
+    tur: Optional[str] = None
 
 @app.get("/api/piyasa/ozet")
 def get_piyasa():
     now = time.time()
-    # 5 saniyeden eskiyse arka planda canlı veriyi tazele
     if now - CACHE_PIYASA["son_guncelleme"] > 5:
         try:
             doviz = kaynak_merkezi.doviz_getir("USDTRY")
@@ -80,11 +89,13 @@ def get_piyasa():
 @app.post("/api/kasa/manuel-ekle")
 def manuel_ekle(v: ManuelVarlik):
     kasa = kasa_oku()
+    sembol_temiz = v.sembol.upper().strip()
     yeni = {
         "id": str(uuid.uuid4())[:8],
-        "sembol": v.sembol.upper().strip(),
+        "sembol": sembol_temiz,
         "adet": v.adet,
-        "maliyet": v.maliyet
+        "maliyet": v.maliyet,
+        "tur": v.tur if v.tur else varlik_turu_belirle(sembol_temiz)
     }
     kasa.append(yeni)
     kasa_kaydet(kasa)
@@ -100,14 +111,18 @@ async def gorsel_aktar(files: List[UploadFile] = File(...)):
         metin = goruntu_ajani.resimden_metin_cikar(img_bytes)
         tespitler = goruntu_ajani.portfoy_ayikla(metin)
 
-        # Dosya adından sembol yakalama
         dosya_adi = file.filename.upper()
         for semb in ["THYAO", "ASELS", "EREGL", "TUPRS", "KCHOL", "USDTRY", "ALTIN"]:
             if semb in dosya_adi and not any(t["sembol"] == semb for t in tespitler):
-                tespitler.append({"sembol": "GRAM ALTIN" if semb == "ALTIN" else semb, "adet": 10.0, "maliyet": 0.0})
+                tespitler.append({
+                    "sembol": "GRAM ALTIN" if semb == "ALTIN" else semb,
+                    "adet": 10.0,
+                    "maliyet": 0.0
+                })
 
         for varlik in tespitler:
             varlik["id"] = str(uuid.uuid4())[:8]
+            varlik["tur"] = varlik_turu_belirle(varlik.get("sembol", ""))
             kasa.append(varlik)
             yeni_eklenenler.append(varlik)
 
@@ -115,7 +130,11 @@ async def gorsel_aktar(files: List[UploadFile] = File(...)):
     return {"eklenen_adet": len(yeni_eklenenler)}
 
 @app.get("/api/kasa/analiz")
-def get_kasa_analiz():
+def get_kasa_analiz(
+    kategori: Optional[str] = Query(None),
+    sirala: Optional[str] = Query(None),
+    yon: Optional[str] = Query("desc")
+):
     kasa = kasa_oku()
     sonuc = []
     piyasa = get_piyasa()
@@ -124,35 +143,64 @@ def get_kasa_analiz():
     altin_ceyrek = piyasa["altin"].get("ceyrek", 4780.0)
 
     for varlik in kasa:
-        sembol = str(varlik.get("sembol", "")).upper()
+        sembol = str(varlik.get("sembol", "")).upper().strip()
+        tur = varlik.get("tur") or varlik_turu_belirle(sembol)
+        varlik["tur"] = tur
+
+        # Kategori filtresi seçilmişse eşleşmeyenleri atla
+        if kategori and kategori not in ["Tümü", "Tumu", ""]:
+            if kategori.lower() != tur.lower():
+                continue
+
         aylik_getiri = "-"
         yillik_getiri = "-"
+        maliyet = float(varlik.get("maliyet", 0.0))
 
-        if "USD" in sembol:
+        # 1. Darphane Altın Sertifikası (Gram altınla karışmaması için en başta kontrol edilir)
+        if "S1" in sembol or "ALTIN.S1" in sembol or "ALTINS1" in sembol:
+            try:
+                veri = kaynak_merkezi.hisse_fiyat_getir("ALTINS1")
+                cekilen_fiyat = veri.get("fiyat", 0.0)
+                fiyat = cekilen_fiyat if cekilen_fiyat > 0 else (maliyet if maliyet > 0 else 85.0)
+            except Exception:
+                fiyat = maliyet if maliyet > 0 else 85.0
+
+        # 2. Döviz Kurları
+        elif "USD" in sembol:
             fiyat = doviz_fiyat
-        elif "ALTIN" in sembol:
-            fiyat = altin_gram
-        elif "CEYREK" in sembol:
+            
+        # 3. Fiziksel Gram ve Çeyrek Altın
+        elif "CEYREK" in sembol or "ÇEYREK" in sembol:
             fiyat = altin_ceyrek
+        elif "ALTIN" in sembol or "XAU" in sembol or "GRAM" in sembol:
+            fiyat = altin_gram
+
+        # 4. TEFAS Yatırım Fonları (3 harfli fon kodları: AYA, DFI, AIS, GMC, TUA vb.)
         elif len(sembol) == 3 and not sembol.endswith("IS"):
             try:
                 fon_veri = kaynak_merkezi.fon_fiyat_getir(sembol)
-                fiyat = fon_veri.get("fiyat", 10.0)
+                cekilen_fiyat = fon_veri.get("fiyat", 0.0)
+                fiyat = cekilen_fiyat if cekilen_fiyat > 0 else (maliyet if maliyet > 0 else 10.0)
                 aylik_getiri = f"%{fon_veri.get('aylik_getiri', 0.0)}"
                 yillik_getiri = f"%{fon_veri.get('yillik_getiri', 0.0)}"
             except Exception:
-                fiyat = 10.0
+                fiyat = maliyet if maliyet > 0 else 10.0
+
+        # 5. Standart BIST Hisseleri (THYAO, ASELS, EKOS, SASA vb.)
         else:
             try:
-                fiyat = kaynak_merkezi.hisse_fiyat_getir(sembol).get("fiyat", 0.0)
-                if fiyat <= 0:
-                    # Anlık veri çekilemezse referans BIST son kapanış
-                    fiyat = 285.0 if "THYAO" in sembol else (60.0 if "ASELS" in sembol else 50.0)
+                hisse_veri = kaynak_merkezi.hisse_fiyat_getir(sembol)
+                cekilen_fiyat = hisse_veri.get("fiyat", 0.0)
+                if cekilen_fiyat > 0:
+                    fiyat = cekilen_fiyat
+                else:
+                    fiyat = maliyet if maliyet > 0 else 50.0
             except Exception:
-                fiyat = 100.0
+                fiyat = maliyet if maliyet > 0 else 50.0
 
         analiz = analiz_motoru.sinyal_ve_plan_uret(varlik, fiyat)
         analiz["id"] = varlik.get("id", str(uuid.uuid4())[:8])
+        analiz["tur"] = tur
         analiz["aylik_getiri"] = aylik_getiri
         analiz["yillik_getiri"] = yillik_getiri
         sonuc.append(analiz)
@@ -171,9 +219,17 @@ def kasa_sifirla():
     kasa_kaydet([])
     return {"durum": "Kasa temizlendi"}
 
+# PWA Service Worker 404 hatasını önleme
+@app.get("/sw.js")
+def get_sw():
+    if os.path.exists("sw.js"):
+        return FileResponse("sw.js", media_type="application/javascript")
+    return HTMLResponse("", status_code=204)
+
 @app.get("/", response_class=HTMLResponse)
 def index():
-    with open("finans.html", "r", encoding="utf-8") as f:
+    dosya = "index.html" if os.path.exists("index.html") else "finans.html"
+    with open(dosya, "r", encoding="utf-8") as f:
         return f.read()
 
 if __name__ == "__main__":
