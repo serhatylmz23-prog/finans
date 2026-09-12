@@ -1,92 +1,76 @@
-import numpy as np
+class AnalizMotoru:
+    def sinyal_ve_plan_uret(self, varlik: dict, guncel_fiyat: float) -> dict:
+        sembol = str(varlik.get("sembol", "")).upper().strip()
+        maliyet = float(varlik.get("maliyet", 0.0))
+        adet = float(varlik.get("adet", 0.0))
+        
+        guncel_fiyat = float(guncel_fiyat) if guncel_fiyat > 0 else maliyet
+        toplam_tutar = round(adet * guncel_fiyat, 2)
+        toplam_maliyet = round(adet * maliyet, 2)
+        kar_zarar_tl = round(toplam_tutar - toplam_maliyet, 2)
+        
+        kz_orani = 0.0
+        if maliyet > 0:
+            kz_orani = round(((guncel_fiyat - maliyet) / maliyet) * 100, 2)
 
-class AnalizVeStratejiMotoru:
-    """
-    Kasa verileri ile canlı fiyatları kıyaslayıp
-    Kademeli Al/Sat, Stop-Loss ve Trend tavsiyeleri üretir.
-    """
-    def rsi_hesapla(self, prices, period=14):
-        if len(prices) < period + 1:
-            return 50.0
-        deltas = np.diff(prices)
-        seed = deltas[:period]
-        up = seed[seed >= 0].sum() / period
-        down = -seed[seed < 0].sum() / period
-        rs = up / down if down != 0 else 0
-        rsi = np.zeros_like(prices)
-        rsi[:period] = 100. - 100. / (1. + rs)
-        return float(rsi[-1])
+        # Dinamik Fiyat Seviyeleri Hesabı
+        stop_seviyesi = round(maliyet * 0.90, 2)
+        hedef_1 = round(guncel_fiyat * 1.05, 2)
+        hedef_2 = round(guncel_fiyat * 1.12, 2)
 
-    def _adet_formatla(self, adet):
-        try:
-            if float(adet).is_integer():
-                return str(int(adet))
-            return f"{adet:.2f}".rstrip("0").rstrip(".")
-        except Exception:
-            return str(adet)
-
-    def sinyal_ve_plan_uret(self, varlik, canli_fiyat):
-        maliyet = varlik.get("maliyet", 0.0)
-        adet = varlik.get("adet", 1.0)
-        kar_zarar_yuzde = ((canli_fiyat - maliyet) / maliyet * 100) if maliyet > 0 else 0.0
-
-        # Karar matrisi
-        tavsiye = "TUT"
-        aksiyon = "Mevcut pozisyonu koruyun."
-        guven_endeksi = 85
-
-        if maliyet <= 0:
-            aksiyon = "Maliyet bilgisi bu ekrandan alınamadı, bu yüzden kâr/zarar % hesaplanamıyor. Tablo satırındaki kategori menüsünün yanına maliyeti elle girebilirsin."
-            guven_endeksi = 50
-
-        elif kar_zarar_yuzde >= 18.0 and canli_fiyat > 0 and adet > 0:
-            tavsiye = "KADEMELİ SAT"
-            tam_adet_mi = float(adet).is_integer()
-            if tam_adet_mi:
-                d1 = round(adet * 0.34)
-                d2 = round(adet * 0.33)
-                d3 = int(adet) - d1 - d2
-            else:
-                d1 = round(adet * 0.34, 2)
-                d2 = round(adet * 0.33, 2)
-                d3 = round(adet - d1 - d2, 2)
-            f1 = canli_fiyat
-            f2 = round(canli_fiyat * 1.03, 2)
-            f3 = round(canli_fiyat * 1.06, 2)
-            aksiyon = (
-                f"Örnek (kesin tavsiye değil) kademeli satış planı: "
-                f"{self._adet_formatla(d1)} adet ≈₺{f1:.2f}'den şimdi, "
-                f"{self._adet_formatla(d2)} adet ≈₺{f2:.2f}'ye ulaşırsa (mevcut fiyatın %3 üstü), "
-                f"{self._adet_formatla(d3)} adet ≈₺{f3:.2f}'ye ulaşırsa (mevcut fiyatın %6 üstü) satılabilir."
+        # Karar ve Açıklama Üretimi
+        if kz_orani <= -15.0:
+            karar = "DİKKAT / STOP-LOSS"
+            guven = 92
+            kademe_adet = max(1, int(adet * 0.5))
+            aciklama = (
+                f"Pozisyonda %{abs(kz_orani)} oranında derin kayıp var. Kritik stop seviyesi: ₺{stop_seviyesi}. "
+                f"Riski sınırlamak için en az {kademe_adet} adet zararına satış değerlendirilebilir veya maliyet düşürmek için taban aranmalı."
             )
-            guven_endeksi = 92
-
-        elif kar_zarar_yuzde <= -8.0 and maliyet > 0:
-            tavsiye = "DİKKAT / STOP-LOSS"
-            stop_fiyat = round(maliyet * 0.90, 2)
-            ort_dusurme_adet = max(round(adet * 0.25), 1) if adet > 0 else 0
-            aksiyon = (
-                f"Zarar %{abs(kar_zarar_yuzde):.1f}. Örnek stop seviyesi ≈₺{stop_fiyat:.2f} "
-                f"(maliyetin %10 altı) — fiyat bu seviyeye inerse pozisyonu kapatmayı düşünebilirsin. "
-                f"Alternatif: ortalama maliyeti düşürmek için ≈{ort_dusurme_adet} adet daha eklemeyi değerlendirebilirsin."
+        elif -15.0 < kz_orani <= -5.0:
+            karar = "STOP-LOSS / İZLE"
+            guven = 85
+            aciklama = (
+                f"Pozisyon %{abs(kz_orani)} ekside. Fiyat maliyetin altına sarktı. "
+                f"₺{stop_seviyesi} seviyesinin altında günlük kapanış gelirse pozisyonu kapatın. Yeni ekleme yapmayın."
             )
-            guven_endeksi = 88
-
-        elif kar_zarar_yuzde > 0 and kar_zarar_yuzde < 10.0:
-            tavsiye = "TREND YUKARI - KORU"
-            aksiyon = "Yükseliş trendi sürüyor, hedeflere kadar taşımaya devam edebilirsin."
-            guven_endeksi = 80
+        elif -5.0 < kz_orani < 15.0:
+            karar = "TUT / POZİSYON KORU"
+            guven = 88
+            aciklama = (
+                f"Kâr/Zarar nötr bantta (%{kz_orani}). Trend stabilitesini koruyor. "
+                f"İlk kâr hedefi ₺{hedef_1} olarak izlenmeli. Stop noktanız ₺{stop_seviyesi} seviyesinde tutulmalıdır."
+            )
+        elif 15.0 <= kz_orani < 50.0:
+            karar = "KADEMELİ SAT (KÂR AL)"
+            guven = 90
+            satilacak = max(1, int(adet * 0.33))
+            aciklama = (
+                f"Güçlü getiri: +%{kz_orani} kazançtasınız. Kârı realize etmek için {satilacak} adet ₺{hedef_1} seviyesinde, "
+                f"kalanlar ₺{hedef_2} seviyesinde kademeli satılabilir."
+            )
+        else:
+            karar = "GÜÇLÜ KÂR SATIŞI"
+            guven = 95
+            satilacak = max(1, int(adet * 0.50))
+            aciklama = (
+                f"Yüksek kâr: +%{kz_orani} (+₺{kar_zarar_tl:,.2f}). Ana sermayeyi korumak için en az {satilacak} adet "
+                f"satılarak kâr nakde dönüştürülmelidir."
+            )
 
         return {
-            "sembol": varlik["sembol"],
+            "sembol": sembol,
             "adet": adet,
             "maliyet": maliyet,
-            "canli_fiyat": canli_fiyat,
-            "kar_zarar_yuzde": round(kar_zarar_yuzde, 2),
-            "toplam_deger": round(adet * canli_fiyat, 2),
-            "tavsiye": tavsiye,
-            "aksiyon_plani": aksiyon,
-            "guven_endeksi": guven_endeksi
+            "canli_fiyat": guncel_fiyat,
+            "fiyat": guncel_fiyat,
+            "toplam_tutar": toplam_tutar,
+            "toplam_deger": toplam_tutar,
+            "kar_zarar_orani": kz_orani,
+            "kar_zarar_tl": kar_zarar_tl,
+            "ajan_karari": karar,
+            "guven_skoru": guven,
+            "analiz_notu": aciklama
         }
 
-analiz_motoru = AnalizVeStratejiMotoru()
+analiz_motoru = AnalizMotoru()
