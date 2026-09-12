@@ -32,13 +32,13 @@
       align-items: start; 
     }
 
-    /* Üst 4'lü Küçük Metrik Barı */
+    /* Üst Metrik Kartları */
     .top-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
     .metric-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px; }
     .metric-title { font-size: 12px; color: var(--text-muted); }
     .metric-val { font-size: 20px; font-weight: bold; margin-top: 4px; color: #38bdf8; }
 
-    /* SABİT ÜST KONTROL ALANI (Manuel Ekle + Varlık Grupları) */
+    /* Sabit Üst Kontrol Paneli */
     .sticky-control-panel {
       position: sticky;
       top: 0px;
@@ -58,7 +58,7 @@
     .input-row input, .input-row button { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--card-border); background: #0f172a; color: #fff; font-size: 13px; }
     .btn-green { background: var(--accent) !important; color: #fff; border: none !important; cursor: pointer; font-weight: bold; }
 
-    /* Kategori Bazlı Kar/Zarar Kartları */
+    /* Varlık Grupları Kartları */
     .category-summary-cards {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -97,7 +97,6 @@
 
     table { width: 100%; border-collapse: collapse; background: var(--card-bg); }
     
-    /* SABİT TABLO BAŞLIĞI */
     th { 
       text-align: left; 
       padding: 12px 10px; 
@@ -124,7 +123,7 @@
     .badge-sat { background: #7f1d1d; color: #f87171; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
     .badge-kademe { background: #78350f; color: #fbbf24; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
 
-    /* SABİT KALAN SAĞ PİYASA KOLONU */
+    /* Sabit Sağ Piyasa Kolonu */
     .market-sidebar { 
       background: var(--card-bg); 
       border: 1px solid var(--card-border); 
@@ -167,7 +166,6 @@
   <div class="layout-container">
     <!-- SOL KOLON -->
     <div>
-      <!-- 1. SABİT GRUP: MANUEL EKLE VE VARLIK GRUPLARI -->
       <div class="sticky-control-panel">
         <div class="action-summary-grid">
           <div class="section-box">
@@ -183,19 +181,16 @@
           <div class="section-box">
             <span style="font-size:12px; color:var(--text-muted); font-weight:600;">VARLIK GRUPLARI (Detay için tıkla)</span>
             <div class="category-summary-cards">
-              <!-- Hisselerim -->
               <div class="cat-card" onclick="openCategoryModal('hisse')">
                 <div class="cat-title"><span><i class="fa-solid fa-chart-line"></i> Hisseler</span> <i class="fa-solid fa-chevron-right" style="font-size:9px;"></i></div>
                 <div class="cat-total" id="hisse-toplam">0,00₺</div>
                 <div class="cat-kz" id="hisse-kz">%0.00 (0,00₺)</div>
               </div>
-              <!-- Fonlarım -->
               <div class="cat-card" onclick="openCategoryModal('fon')">
                 <div class="cat-title"><span><i class="fa-solid fa-vault"></i> Fonlar</span> <i class="fa-solid fa-chevron-right" style="font-size:9px;"></i></div>
                 <div class="cat-total" id="fon-toplam">0,00₺</div>
                 <div class="cat-kz" id="fon-kz">%0.00 (0,00₺)</div>
               </div>
-              <!-- Madenlerim -->
               <div class="cat-card" onclick="openCategoryModal('maden')">
                 <div class="cat-title"><span><i class="fa-solid fa-coins"></i> Madenler</span> <i class="fa-solid fa-chevron-right" style="font-size:9px;"></i></div>
                 <div class="cat-total" id="maden-toplam">0,00₺</div>
@@ -206,7 +201,6 @@
         </div>
       </div>
 
-      <!-- 2. SABİT BAŞLIKLI PORTFÖY TABLOSU -->
       <div class="section-box" style="padding: 12px 16px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <h3 style="font-size:15px;">Kasam ve Al/Sat Kararları</h3>
@@ -266,7 +260,8 @@
         </div>
       </div>
 
-      <div id="modal-aciklama" style="font-size:13px; line-height:1.5; color:#cbd5e1;"></div>
+      <!-- ZENGİN HTML BİÇİMLENDİRMELİ ANALİZ AÇIKLAMASI -->
+      <div id="modal-aciklama" style="font-size:13px; line-height:1.6; color:#cbd5e1; background:#0b1322; padding:14px; border-radius:8px; border:1px solid #1e293b;"></div>
     </div>
   </div>
 
@@ -588,9 +583,9 @@
         if(rawKarar.includes("KADEMELİ") || rawKarar.includes("KADEME")) {
           badgeClass = "badge-kademe";
           shortKarar = "KADEMELİ SAT";
-        } else if(rawKarar.includes("SAT") || rawKarar.includes("STOP") || rawKarar.includes("DİKKAT")) {
+        } else if(rawKarar.includes("SAT") || rawKarar.includes("STOP") || rawKarar.includes("DİKKAT") || rawKarar.includes("KISIT")) {
           badgeClass = "badge-sat";
-          shortKarar = "STOP-LOSS / SAT";
+          shortKarar = "DİKKAT / İŞLEM KISITI";
         }
 
         return `
@@ -618,7 +613,9 @@
       document.getElementById("modal-karar").innerText = item.ajan_karari || "TUT";
       document.getElementById("modal-aylik").innerText = item.aylik_getiri || "-";
       document.getElementById("modal-yillik").innerText = item.yillik_getiri || "-";
-      document.getElementById("modal-aciklama").innerText = item.analiz_notu || item.ajan_karari || "Pozisyonunuz izleniyor, hedef ve destek seviyeleri korunuyor.";
+      
+      // innerHTML ile etiketler zengin ve biçimli gösterilir
+      document.getElementById("modal-aciklama").innerHTML = item.analiz_notu || item.ajan_karari || "Pozisyonunuz izleniyor, hedef ve destek seviyeleri korunuyor.";
 
       document.getElementById("analizModal").style.display = "flex";
     }
