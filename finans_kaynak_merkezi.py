@@ -19,12 +19,106 @@ class FinansKaynakMerkezi:
         self.gold_key = os.getenv("GOLD_API_KEY", "")
 
     def durum_raporu(self):
-        return {
-            "TCMB": {"durum": "Çalışıyor", "guven": 100},
-            "BIST": {"durum": "Çalışıyor", "guven": 95},
-            "TEFAS": {"durum": "Çalışıyor", "guven": 98},
-            "GoldAPI": {"durum": "Çalışıyor", "guven": 98}
-        }
+        """
+        Önceki sürümde bu fonksiyon hiçbir şeyi gerçekten test etmeden her
+        zaman "Çalışıyor" ve sabit güven puanları döndürüyordu — panelde
+        "her şey yolunda" görünüp aslında hiçbir kaynağın test edilmediği
+        bir durum yaratıyordu. Artık her kaynağa kısa bir gerçek istek
+        atılıp yanıt durumuna göre rapor üretiliyor.
+        """
+        rapor = {}
+
+        # TCMB (döviz)
+        try:
+            doviz = self.doviz_getir("USDTRY")
+            calisiyor = doviz.get("fiyat", 0) > 0 and doviz.get("kaynak") != "Yedek Referans"
+            rapor["Döviz Kaynağı"] = {
+                "durum": "Çalışıyor" if calisiyor else "Yedek Veriye Düştü",
+                "kaynak_adi": doviz.get("kaynak"),
+                "guven": doviz.get("guven", 50),
+            }
+        except Exception as e:
+            rapor["Döviz Kaynağı"] = {"durum": f"Hata: {e}", "guven": 0}
+
+        # BIST (yfinance üzerinden XU100 örneklemesi)
+        try:
+            bist = self.hisse_fiyat_getir("XU100")
+            calisiyor = bist.get("fiyat", 0) > 0 and bist.get("kaynak") != "Veri Yok"
+            rapor["BIST"] = {
+                "durum": "Çalışıyor" if calisiyor else "Veri Alınamadı",
+                "kaynak_adi": bist.get("kaynak"),
+                "guven": bist.get("guven", 50),
+            }
+        except Exception as e:
+            rapor["BIST"] = {"durum": f"Hata: {e}", "guven": 0}
+
+        # TEFAS (fon_takip üzerinden gerçek bir fon kodu ile test)
+        try:
+            if fon_takip:
+                test_fon = fon_takip.fon_bilgisi_getir("AFA")
+                calisiyor = test_fon.get("fiyat", 0) > 0
+                rapor["TEFAS"] = {
+                    "durum": "Çalışıyor" if calisiyor else "Veri Alınamadı",
+                    "guven": 90 if calisiyor else 30,
+                }
+            else:
+                rapor["TEFAS"] = {"durum": "Modül Yüklenemedi", "guven": 0}
+        except Exception as e:
+            rapor["TEFAS"] = {"durum": f"Hata: {e}", "guven": 0}
+
+        # Altın/Gümüş kaynağı
+        try:
+            altin = self.altin_fiyatlari_getir()
+            calisiyor = altin.get("kaynak") != "Yedek Spot"
+            rapor["Kıymetli Maden Kaynağı"] = {
+                "durum": "Çalışıyor" if calisiyor else "Yedek Veriye Düştü",
+                "kaynak_adi": altin.get("kaynak"),
+                "guven": altin.get("guven", 50),
+            }
+        except Exception as e:
+            rapor["Kıymetli Maden Kaynağı"] = {"durum": f"Hata: {e}", "guven": 0}
+
+        return rapor
+
+    def gercek_getiri_hesapla(self, yf_sembol: str):
+        """
+        Önceki sürümde aylık/yıllık getiri ya sabit koda gömülü yüzdeler
+        (örn. altın için hep "+%7.8") ya da kullanıcının kendi maliyetinden
+        türetilen anlamsız bir hesaptı (BIST hisseleri). İkisi de piyasanın
+        gerçekte ne yaptığını yansıtmıyordu.
+
+        Bu fonksiyon yfinance geçmiş fiyat verisinden GERÇEK 1 aylık ve
+        1 yıllık yüzde değişimi hesaplar. Veri çekilemezse None döner —
+        çağıran taraf bu durumda "-" (veri yok) göstermeli, uydurma bir
+        sayı basmamalıdır.
+        """
+        try:
+            t = yf.Ticker(yf_sembol)
+            hist = t.history(period="1y")
+            if hist is None or hist.empty or "Close" not in hist:
+                return None
+            close = hist["Close"].dropna()
+            if len(close) < 2:
+                return None
+
+            son_fiyat = float(close.iloc[-1])
+
+            def _yuzde_degisim(gun_sayisi):
+                if len(close) <= gun_sayisi:
+                    eski = float(close.iloc[0])
+                else:
+                    eski = float(close.iloc[-gun_sayisi])
+                if eski <= 0:
+                    return None
+                return round(((son_fiyat - eski) / eski) * 100, 2)
+
+            aylik = _yuzde_degisim(21)   # ~1 ay işlem günü
+            yillik = _yuzde_degisim(252)  # ~1 yıl işlem günü
+            if aylik is None or yillik is None:
+                return None
+            return {"aylik_getiri": aylik, "yillik_getiri": yillik}
+        except Exception:
+            return None
 
     def fon_fiyat_getir(self, sembol="TTE"):
         """

@@ -1,5 +1,10 @@
 import requests
+import time
 from datetime import datetime
+
+CACHE_SURESI_SN = 300  # 5 dakika - TEFAS fon fiyatları günde bir kez güncellenir ama
+                        # sunucu açık kaldığı sürece eski cache'e takılıp kalmasın diye
+                        # yine de periyodik tazeleme yapılır.
 
 class FonTakipMerkezi:
     def __init__(self):
@@ -9,13 +14,15 @@ class FonTakipMerkezi:
             "Referer": "https://www.tefas.gov.tr/"
         }
         self.cache = {}
+        self.cache_zamani = {}
 
     def fon_bilgisi_getir(self, fon_kodu="AYA"):
         fon_kodu = str(fon_kodu).upper().strip()
         now_str = datetime.now().strftime("%H:%M:%S")
 
         if fon_kodu in self.cache:
-            return self.cache[fon_kodu]
+            if time.time() - self.cache_zamani.get(fon_kodu, 0) < CACHE_SURESI_SN:
+                return self.cache[fon_kodu]
 
         # 1. YÖNTEM: TEFAS Resmi Karşılaştırma / Genel Veri Servisi (Engellenmeyen JSON Endpoint)
         try:
@@ -35,6 +42,7 @@ class FonTakipMerkezi:
                             "guncelleme": now_str
                         }
                         self.cache[fon_kodu] = res
+                        self.cache_zamani[fon_kodu] = time.time()
                         return res
         except Exception:
             pass
@@ -57,6 +65,7 @@ class FonTakipMerkezi:
                         "guncelleme": now_str
                     }
                     self.cache[fon_kodu] = res
+                    self.cache_zamani[fon_kodu] = time.time()
                     return res
         except Exception:
             pass
@@ -90,6 +99,7 @@ class FonTakipMerkezi:
                             "guncelleme": now_str
                         }
                         self.cache[fon_kodu] = res
+                        self.cache_zamani[fon_kodu] = time.time()
                         return res
         except Exception:
             pass

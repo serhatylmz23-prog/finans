@@ -1,72 +1,139 @@
 class AnalizMotoru:
-    def sinyal_ve_plan_uret(self, varlik: dict, guncel_fiyat: float, aylik_getiri=0.0, yillik_getiri=0.0) -> dict:
+    """
+    Portföydeki her varlık için sinyal/plan üretir.
+
+    Önemli ilke: Bu motor hiçbir zaman kendi başına emir vermez, yalnızca
+    şeffaf ve kaynağı belli olan bir değerlendirme sunar. "Kesin kazanç"
+    ya da "garanti" ifadesi kullanılmaz; güven skoru veri kalitesine göre
+    değişir, sabit bir rakam değildir.
+    """
+
+    def _guven_hesapla(self, veri_kaynagi_guveni: float, veri_tam_mi: bool, hareketsiz_mi: bool) -> int:
+        """
+        Güven skorunu, önceki sürümde olduğu gibi karar dalına göre sabit
+        basmak yerine gerçek veri kalitesinden türetir:
+        - Fiyat canlı bir kaynaktan mı geldi yoksa yedek/referans mı?
+        - Aylık/yıllık getiri gerçekten hesaplanabildi mi yoksa "-" mi?
+        - Hareketsizlik/likidite şüphesi var mı (daha düşük güven)?
+        """
+        guven = veri_kaynagi_guveni  # 0-100, kaynağın kendi güven puanı (örn. "BIST Canlı" = 95, "Yedek Referans" = 80)
+        if not veri_tam_mi:
+            guven -= 15  # getiri verisi eksikse kararın gerekçesi de eksik demektir
+        if hareketsiz_mi:
+            guven -= 10  # şüpheli/donuk fiyat hareketi güveni düşürür, artırmaz
+        guven = max(40, min(99, round(guven)))
+        return int(guven)
+
+    def sinyal_ve_plan_uret(
+        self,
+        varlik: dict,
+        guncel_fiyat: float,
+        aylik_getiri=0.0,
+        yillik_getiri=0.0,
+        veri_kaynagi: str = "Bilinmiyor",
+        veri_kaynagi_guveni: float = 70.0,
+        kaynak_linkleri: list = None,
+    ) -> dict:
         sembol = str(varlik.get("sembol", "")).upper().strip()
         maliyet = float(varlik.get("maliyet", 0.0))
         adet = float(varlik.get("adet", 0.0))
-        
-        guncel_fiyat = float(guncel_fiyat) if guncel_fiyat > 0 else maliyet
+
+        guncel_fiyat = float(guncel_fiyat) if guncel_fiyat and guncel_fiyat > 0 else maliyet
         toplam_tutar = round(adet * guncel_fiyat, 2)
         toplam_maliyet = round(adet * maliyet, 2)
         kar_zarar_tl = round(toplam_tutar - toplam_maliyet, 2)
-        
+
         kz_orani = 0.0
         if maliyet > 0:
             kz_orani = round(((guncel_fiyat - maliyet) / maliyet) * 100, 2)
 
-        aciklamalar = []
-
-        # 1. İşlem Kısıtı / Likidite Donması / Yakın İzleme Pazarı Tespiti
-        # UMPAS gibi tahtası kapalı veya getirisi donmuş hisselerin dinamik yakalanması
+        # Getiri verisi gerçekten var mı, yoksa "-" placeholder mı?
+        veri_tam_mi = True
+        aylik_val, yillik_val = 0.0, 0.0
         try:
-            aylik_val = abs(float(str(aylik_getiri).replace("%", "").replace(",", ".") or 0))
-            yillik_val = abs(float(str(yillik_getiri).replace("%", "").replace(",", ".") or 0))
+            if aylik_getiri in (None, "-", "") or yillik_getiri in (None, "-", ""):
+                veri_tam_mi = False
+            else:
+                aylik_val = abs(float(str(aylik_getiri).replace("%", "").replace(",", ".")))
+                yillik_val = abs(float(str(yillik_getiri).replace("%", "").replace(",", ".")))
         except Exception:
-            aylik_val, yillik_val = 1.0, 1.0
+            veri_tam_mi = False
 
-        hareketsiz_mi = (aylik_val < 0.25 and yillik_val < 0.6)
-        ozel_tedbir_hisseleri = ["UMPAS", "DARDL", "BRKO", "MEMS1"]
+        # Hareketsizlik/olası likidite sorunu: SADECE gerçek getiri verisine
+        # dayanır. Önceki sürümde belirli semboller (UMPAS, DARDL, BRKO,
+        # MEMS1 vb.) koda gömülü sabit bir "kesin kısıtlı" listesiydi; bu
+        # hem güncelliğini yitirebilir hem de o sembolü tutan herkes için
+        # gerçek durumdan bağımsız hep aynı (yanlış olabilecek) yorumu
+        # üretirdi. Artık böyle bir sabit liste yok; tespit tamamen o anki
+        # veriye dayanıyor ve "kesin" değil "olası" olarak sunuluyor.
+        hareketsiz_mi = veri_tam_mi and (aylik_val < 0.25 and yillik_val < 0.6)
 
-        if sembol in ozel_tedbir_hisseleri or (hareketsiz_mi and kz_orani < 0):
-            karar = "DİKKAT / İŞLEM KISITI"
-            guven = 95
-            aciklamalar.append(f"⛔ <strong>Piyasa Uyarısı:</strong> {sembol} payında likidite/işlem kısıtı veya Yakın İzleme Pazarı (YİP) tedbiri tespit edilmiştir.")
-            aciklamalar.append("⚠️ <strong>Kısıtlama:</strong> Serbest fiyat oluşumu engelli. Tek fiyat emir toplama, brüt takas veya açığa satış/kredili işlem yasağı kapsamındadır.")
-            aciklamalar.append("💡 <strong>Ajan Görüşü:</strong> Payda kesinlikle yeni maliyet düşürme alımı yapılmamalıdır. Eşleşme sağlandığında öncelikli portföy tahliyesi ve likidite çıkışı hedeflenmelidir.")
+        guven = self._guven_hesapla(veri_kaynagi_guveni, veri_tam_mi, hareketsiz_mi)
 
-        # 2. Derin Zarardaki Hisseler İçin Matematiksel Maliyet Düşürme
+        aciklamalar = []
+        guven_gerekce = []
+        if veri_kaynagi_guveni < 85:
+            guven_gerekce.append(f"fiyat kaynağı '{veri_kaynagi}' (yedek/referans olabilir)")
+        if not veri_tam_mi:
+            guven_gerekce.append("aylık/yıllık getiri verisi eksik")
+        if hareketsiz_mi:
+            guven_gerekce.append("fiyat hareketi anormal derecede durgun görünüyor")
+
+        # 1. Olası Likidite Sorunu / Hareketsiz Fiyat (veri temelli, sembole özel sabit liste yok)
+        if hareketsiz_mi and kz_orani < 0:
+            karar = "DİKKAT / OLASI LİKİDİTE SORUNU"
+            aciklamalar.append(
+                f"⚠️ <strong>Veri Uyarısı:</strong> {sembol} için son bir ay/yıl getiri verisi neredeyse hiç "
+                "değişmemiş görünüyor. Bu gerçek bir işlem kısıtı (YİP/tahta kapalı) olabileceği gibi, "
+                "veri kaynağının fiyatı güncelleyememesinden de kaynaklanabilir — kesin değildir."
+            )
+            aciklamalar.append("💡 <strong>Ajan Görüşü:</strong> Kesin bir aksiyon önermeden önce ilgili aracı kurum ekranından veya BIST/KAP duyurularından işlem durumunu doğrulaman önerilir.")
+
+        # 2. Derin Zarardaki Varlıklar İçin Matematiksel Maliyet Düşürme
         elif kz_orani <= -20.0:
-            karar = "DİKKAT / STOP-LOSS"
-            guven = 91
+            karar = "DİKKAT / STOP-LOSS DEĞERLENDİR"
             hedef_maliyet = round((maliyet + guncel_fiyat) / 2, 2)
             ek_adet = int(adet * 0.40)
             ek_tutar = round(ek_adet * guncel_fiyat, 2)
 
-            aciklamalar.append(f"📉 <strong>Derin Kayıp:</strong> Pozisyon maliyetin %{abs(kz_orani)} altında bulunuyor.")
+            aciklamalar.append(f"📉 <strong>Derin Kayıp:</strong> Pozisyon maliyetin %{abs(kz_orani):.2f} altında.")
             aciklamalar.append(
-                f"🎯 <strong>Kademeli Müdahale:</strong> Fiyatı ortalamak için mevcut fiyattan (₺{guncel_fiyat:.2f}) "
-                f"<strong>+{ek_adet} adet</strong> (₺{ek_tutar:,.2f}) ilave edilirse maliyet doğrudan <strong>₺{maliyet:.2f} ➔ ₺{hedef_maliyet:.2f}</strong> seviyesine çekilebilir."
+                f"🎯 <strong>Matematiksel Senaryo (tavsiye değil, hesaplama):</strong> Mevcut fiyattan (₺{guncel_fiyat:.2f}) "
+                f"<strong>+{ek_adet} adet</strong> (≈₺{ek_tutar:,.2f}) eklenirse ortalama maliyet "
+                f"<strong>₺{maliyet:.2f} ➔ ₺{hedef_maliyet:.2f}</strong> seviyesine iner. Bu, ek sermaye riskini artırır; "
+                "yalnızca bir hesaplamadır, alım tavsiyesi değildir."
             )
-            aciklamalar.append(f"🛑 <strong>Kritik Stop:</strong> Fiyat ₺{(guncel_fiyat * 0.92):.2f} altını görürse daha fazla kayıp yaşamamak adına pozisyon kapatılmalıdır.")
+            aciklamalar.append(f"🛑 <strong>Not:</strong> Fiyat ₺{(guncel_fiyat * 0.92):.2f} altına inerse kayıp derinleşir; risk toleransına göre değerlendirilmelidir.")
 
         # 3. Dengeli / Koruma Bandı
         elif -20.0 < kz_orani < 15.0:
-            karar = "TUT / İZLE"
-            guven = 86
-            aciklamalar.append(f"📌 K/Z bandı dengeli bantta (%{kz_orani}). Trend desteği takip ediliyor.")
-            aciklamalar.append(f"🎯 Kâr Realizasyon Seviyesi: ₺{(guncel_fiyat * 1.08):.2f} | Stop Seviyesi: ₺{(maliyet * 0.92):.2f}.")
+            karar = "TUT / İZLEMEYE DEVAM"
+            aciklamalar.append(f"📌 K/Z bandı dengeli aralıkta (%{kz_orani}).")
+            aciklamalar.append(f"🎯 Referans seviyeler — olası kâr realizasyonu: ₺{(guncel_fiyat * 1.08):.2f} | olası stop: ₺{(maliyet * 0.92):.2f} (bunlar öneri değil, referans hesaplamalardır).")
 
-        # 4. Yüksek Kâr Realizasyonu
+        # 4. Yüksek Kâr Bölgesi
         else:
-            karar = "KADEMELİ KÂR AL"
-            guven = 94
+            karar = "KADEMELİ KÂR REALİZASYONU DEĞERLENDİR"
             sat_adet = max(1, int(adet * 0.35))
-            aciklamalar.append(f"🚀 <strong>Güçlü Kâr:</strong> +%{kz_orani} (+₺{kar_zarar_tl:,.2f}). Kârı koruma planı:")
-            aciklamalar.append(f"1. Kademe: {sat_adet} adet ₺{(guncel_fiyat * 1.05):.2f} seviyesinde nakde dönüştürülmeli.")
+            aciklamalar.append(f"🚀 <strong>Güçlü Kâr Bölgesi:</strong> +%{kz_orani} (+₺{kar_zarar_tl:,.2f}).")
+            aciklamalar.append(f"1. Olası kademe: {sat_adet} adet ₺{(guncel_fiyat * 1.05):.2f} seviyesinde nakde dönüştürme senaryosu (karar sana ait).")
+
+        if guven_gerekce:
+            aciklamalar.append("🔎 <strong>Güven skoru neden bu seviyede:</strong> " + "; ".join(guven_gerekce) + ".")
+
+        if kaynak_linkleri:
+            kaynak_html = " ".join(
+                f'<a href="{k.get("link","#")}" target="_blank" rel="noopener">🔗 {k.get("baslik","kaynak")} ({k.get("kaynak","")})</a>'
+                for k in kaynak_linkleri[:3]
+            )
+            aciklamalar.append("📰 <strong>İlgili açık kaynak haberler:</strong><br>" + kaynak_html)
 
         return {
             "sembol": sembol,
             "adet": adet,
-            "maliyet": maliyet,
+            "birim_maliyet": maliyet,
+            "maliyet": maliyet,  # geriye dönük uyumluluk için korunuyor
+            "toplam_maliyet": toplam_maliyet,
             "canli_fiyat": guncel_fiyat,
             "fiyat": guncel_fiyat,
             "toplam_tutar": toplam_tutar,
@@ -75,7 +142,9 @@ class AnalizMotoru:
             "kar_zarar_tl": kar_zarar_tl,
             "ajan_karari": karar,
             "guven_skoru": guven,
-            "analiz_notu": "<br><br>".join(aciklamalar)
+            "veri_kaynagi": veri_kaynagi,
+            "analiz_notu": "<br><br>".join(aciklamalar),
         }
+
 
 analiz_motoru = AnalizMotoru()

@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SyFinansOtağı - Profesyonel Finans Merkezi</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192x192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+  <meta name="theme-color" content="#0b111e">
   <style>
     :root {
       --bg-dark: #0b111e;
@@ -176,23 +179,31 @@
               <input type="number" id="m-maliyet" placeholder="Maliyet ₺" style="width:30%;">
               <button class="btn-green" onclick="manuelEkle()">Ekle</button>
             </div>
+            <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--card-border);">
+              <span style="font-size:12px; color:var(--text-muted); font-weight:600;">📷 EKRAN GÖRÜNTÜSÜNDEN OTOMATİK EKLE</span>
+              <div class="input-row">
+                <input type="file" id="gorsel-input" accept="image/*" multiple style="flex:1; font-size:12px; padding:6px;">
+                <button class="btn-green" onclick="gorselYukle()" id="gorsel-btn">Tara ve Ekle</button>
+              </div>
+              <div id="gorsel-durum" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
+            </div>
           </div>
 
           <div class="section-box">
             <span style="font-size:12px; color:var(--text-muted); font-weight:600;">VARLIK GRUPLARI (Detay için tıkla)</span>
             <div class="category-summary-cards">
               <div class="cat-card" onclick="openCategoryModal('hisse')">
-                <div class="cat-title"><span><i class="fa-solid fa-chart-line"></i> Hisseler</span> <i class="fa-solid fa-chevron-right" style="font-size:9px;"></i></div>
+                <div class="cat-title"><span>📈 Hisseler</span> <span style="font-size:11px;">&rsaquo;</span></div>
                 <div class="cat-total" id="hisse-toplam">0,00₺</div>
                 <div class="cat-kz" id="hisse-kz">%0.00 (0,00₺)</div>
               </div>
               <div class="cat-card" onclick="openCategoryModal('fon')">
-                <div class="cat-title"><span><i class="fa-solid fa-vault"></i> Fonlar</span> <i class="fa-solid fa-chevron-right" style="font-size:9px;"></i></div>
+                <div class="cat-title"><span>🗄️ Fonlar</span> <span style="font-size:11px;">&rsaquo;</span></div>
                 <div class="cat-total" id="fon-toplam">0,00₺</div>
                 <div class="cat-kz" id="fon-kz">%0.00 (0,00₺)</div>
               </div>
               <div class="cat-card" onclick="openCategoryModal('maden')">
-                <div class="cat-title"><span><i class="fa-solid fa-coins"></i> Madenler</span> <i class="fa-solid fa-chevron-right" style="font-size:9px;"></i></div>
+                <div class="cat-title"><span>🪙 Madenler</span> <span style="font-size:11px;">&rsaquo;</span></div>
                 <div class="cat-total" id="maden-toplam">0,00₺</div>
                 <div class="cat-kz" id="maden-kz">%0.00 (0,00₺)</div>
               </div>
@@ -211,19 +222,21 @@
           <table>
             <thead>
               <tr>
-                <th onclick="sortTable('sembol')">VARLIK <i id="icon-sembol" class="fa-solid fa-sort"></i></th>
-                <th onclick="sortTable('adet')">ADET <i id="icon-adet" class="fa-solid fa-sort"></i></th>
-                <th onclick="sortTable('maliyet')">MALİYET <i id="icon-maliyet" class="fa-solid fa-sort"></i></th>
-                <th onclick="sortTable('canli_fiyat')">CANLI FİYAT <i id="icon-canli_fiyat" class="fa-solid fa-sort"></i></th>
-                <th onclick="sortTable('kar_zarar_orani')">K/Z (%) <i id="icon-kar_zarar_orani" class="fa-solid fa-sort"></i></th>
-                <th onclick="sortTable('toplam_tutar')">TOPLAM TUTAR <i id="icon-toplam_tutar" class="fa-solid fa-sort"></i></th>
-                <th onclick="sortTable('kar_zarar_tl')">K/Z (₺) <i id="icon-kar_zarar_tl" class="fa-solid fa-sort"></i></th>
-                <th onclick="sortTable('ajan_karari')">KARAR <i id="icon-ajan_karari" class="fa-solid fa-sort"></i></th>
+                <th onclick="sortTable('sembol')">VARLIK <i id="icon-sembol" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('adet')">ADET <i id="icon-adet" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('maliyet')">BİRİM MALİYET <i id="icon-maliyet" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('toplam_maliyet')">TOPLAM MALİYET <i id="icon-toplam_maliyet" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('canli_fiyat')">CANLI FİYAT <i id="icon-canli_fiyat" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('kar_zarar_orani')">K/Z (%) <i id="icon-kar_zarar_orani" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('toplam_tutar')">TOPLAM TUTAR <i id="icon-toplam_tutar" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('kar_zarar_tl')">K/Z (₺) <i id="icon-kar_zarar_tl" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('guven_skoru')">GÜVEN <i id="icon-guven_skoru" class="sort-icon">⇅</i></th>
+                <th onclick="sortTable('ajan_karari')">KARAR <i id="icon-ajan_karari" class="sort-icon">⇅</i></th>
                 <th style="cursor:default;">İŞLEM</th>
               </tr>
             </thead>
             <tbody id="kasa-tablo">
-              <tr><td colspan="9" style="text-align:center; padding:16px;">Veriler yükleniyor...</td></tr>
+              <tr><td colspan="11" style="text-align:center; padding:16px;">Veriler yükleniyor...</td></tr>
             </tbody>
           </table>
         </div>
@@ -275,10 +288,10 @@
       <table style="margin-top:0;">
         <thead>
           <tr>
-            <th onclick="sortCategoryTable('sembol')" style="background:#0f172a;">ÜRÜN <i id="cat-icon-sembol" class="fa-solid fa-sort"></i></th>
-            <th onclick="sortCategoryTable('canli_fiyat')" style="background:#0f172a;">FİYAT <i id="cat-icon-canli_fiyat" class="fa-solid fa-sort"></i></th>
-            <th onclick="sortCategoryTable('kar_zarar_orani')" style="background:#0f172a;">K/Z (%) <i id="cat-icon-kar_zarar_orani" class="fa-solid fa-sort"></i></th>
-            <th onclick="sortCategoryTable('kar_zarar_tl')" style="background:#0f172a;">K/Z (₺) <i id="cat-icon-kar_zarar_tl" class="fa-solid fa-sort"></i></th>
+            <th onclick="sortCategoryTable('sembol')" style="background:#0f172a;">ÜRÜN <i id="cat-icon-sembol" class="sort-icon">⇅</i></th>
+            <th onclick="sortCategoryTable('canli_fiyat')" style="background:#0f172a;">FİYAT <i id="cat-icon-canli_fiyat" class="sort-icon">⇅</i></th>
+            <th onclick="sortCategoryTable('kar_zarar_orani')" style="background:#0f172a;">K/Z (%) <i id="cat-icon-kar_zarar_orani" class="sort-icon">⇅</i></th>
+            <th onclick="sortCategoryTable('kar_zarar_tl')" style="background:#0f172a;">K/Z (₺) <i id="cat-icon-kar_zarar_tl" class="sort-icon">⇅</i></th>
             <th style="background:#0f172a; cursor:default;">TREND</th>
           </tr>
         </thead>
@@ -334,9 +347,9 @@
       ];
 
       const html = items.map(i => {
-        const icon = i.trend === 'up' ? '<i class="fa-solid fa-arrow-trend-up trend-up"></i>' : 
-                     i.trend === 'down' ? '<i class="fa-solid fa-arrow-trend-down trend-down"></i>' : 
-                     '<i class="fa-solid fa-minus trend-flat"></i>';
+        const icon = i.trend === 'up' ? '<span class="trend-up">▲</span>' :
+                     i.trend === 'down' ? '<span class="trend-down">▼</span>' :
+                     '<span class="trend-flat">—</span>';
         return `
           <div class="market-row">
             <span class="market-name">${i.name}</span>
@@ -397,7 +410,7 @@
 
       ['sembol', 'canli_fiyat', 'kar_zarar_orani', 'kar_zarar_tl'].forEach(col => {
         const icon = document.getElementById(`cat-icon-${col}`);
-        if (icon) icon.className = 'fa-solid fa-sort';
+        if (icon) icon.textContent = '⇅';
       });
       currentCatSortColumn = null;
 
@@ -415,12 +428,12 @@
 
       ['sembol', 'canli_fiyat', 'kar_zarar_orani', 'kar_zarar_tl'].forEach(col => {
         const icon = document.getElementById(`cat-icon-${col}`);
-        if (icon) icon.className = 'fa-solid fa-sort';
+        if (icon) icon.textContent = '⇅';
       });
 
       const activeIcon = document.getElementById(`cat-icon-${column}`);
       if (activeIcon) {
-        activeIcon.className = currentCatSortOrder === 'asc' ? 'fa-solid fa-arrow-up-short-wide' : 'fa-solid fa-arrow-down-wide-short';
+        activeIcon.textContent = currentCatSortOrder === 'asc' ? '↑' : '↓';
       }
 
       activeCategoryList.sort((a, b) => {
@@ -451,7 +464,7 @@
       tbody.innerHTML = list.map(item => {
         const kz = item.kar_zarar_orani;
         const isItemUp = kz >= 0;
-        const icon = isItemUp ? '<i class="fa-solid fa-arrow-trend-up trend-up"></i>' : '<i class="fa-solid fa-arrow-trend-down trend-down"></i>';
+        const icon = isItemUp ? '<span class="trend-up">▲</span>' : '<span class="trend-down">▼</span>';
         return `
           <tr>
             <td><strong>${item.sembol}</strong> <span style="font-size:11px; color:var(--text-muted);">(${item.adet} adet)</span></td>
@@ -497,11 +510,13 @@
           }
 
           const karZararTL = (canliFiyat - maliyet) * adet;
+          const toplamMaliyet = parseFloat(item.toplam_maliyet ?? (maliyet * adet));
 
           return {
             ...item,
             adet: adet,
             maliyet: maliyet,
+            toplam_maliyet: toplamMaliyet,
             canli_fiyat: canliFiyat,
             toplam_tutar: toplamTutar,
             kar_zarar_orani: kz,
@@ -530,14 +545,14 @@
         currentSortOrder = 'asc';
       }
 
-      ['sembol', 'adet', 'maliyet', 'canli_fiyat', 'kar_zarar_orani', 'toplam_tutar', 'kar_zarar_tl', 'ajan_karari'].forEach(col => {
+      ['sembol', 'adet', 'maliyet', 'toplam_maliyet', 'canli_fiyat', 'kar_zarar_orani', 'toplam_tutar', 'kar_zarar_tl', 'guven_skoru', 'ajan_karari'].forEach(col => {
         const icon = document.getElementById(`icon-${col}`);
-        if (icon) icon.className = 'fa-solid fa-sort';
+        if (icon) icon.textContent = '⇅';
       });
 
       const activeIcon = document.getElementById(`icon-${column}`);
       if (activeIcon) {
-        activeIcon.className = currentSortOrder === 'asc' ? 'fa-solid fa-arrow-up-short-wide' : 'fa-solid fa-arrow-down-wide-short';
+        activeIcon.textContent = currentSortOrder === 'asc' ? '↑' : '↓';
       }
 
       applySort();
@@ -565,7 +580,7 @@
     function renderTable(list) {
       const tbody = document.getElementById("kasa-tablo");
       if(!list || !list.length) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Kasada kayıtlı varlık bulunmuyor.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;">Kasada kayıtlı varlık bulunmuyor.</td></tr>';
         return;
       }
 
@@ -579,24 +594,29 @@
 
         const rawKarar = item.ajan_karari || item.karar || "TUT";
         let badgeClass = "badge-tut";
-        let shortKarar = "TUT";
+        let shortKarar = rawKarar;
         if(rawKarar.includes("KADEMELİ") || rawKarar.includes("KADEME")) {
           badgeClass = "badge-kademe";
-          shortKarar = "KADEMELİ SAT";
-        } else if(rawKarar.includes("SAT") || rawKarar.includes("STOP") || rawKarar.includes("DİKKAT") || rawKarar.includes("KISIT")) {
+        } else if(rawKarar.includes("LİKİDİTE") || rawKarar.includes("LIKIDITE")) {
           badgeClass = "badge-sat";
-          shortKarar = "DİKKAT / İŞLEM KISITI";
+        } else if(rawKarar.includes("SAT") || rawKarar.includes("STOP") || rawKarar.includes("DİKKAT")) {
+          badgeClass = "badge-sat";
         }
+
+        const toplamMaliyet = (item.toplam_maliyet != null) ? item.toplam_maliyet : (item.maliyet * item.adet);
+        const guven = item.guven_skoru != null ? item.guven_skoru : '-';
 
         return `
           <tr class="clickable-row" onclick="openModal(${idx})">
             <td><strong>${item.sembol}</strong></td>
             <td>${item.adet}</td>
             <td>${formatTL(item.maliyet)}</td>
+            <td>${formatTL(toplamMaliyet)}</td>
             <td><strong>${formatTL(item.canli_fiyat)}</strong></td>
             <td style="color:${kzColor}; font-weight:bold;">${kzText}</td>
             <td><strong>${formatTL(item.toplam_tutar)}</strong></td>
             <td style="color:${kzColor}; font-weight:bold;">${kzTLText}</td>
+            <td title="${item.veri_kaynagi || ''}">%${guven}</td>
             <td><span class="${badgeClass}">${shortKarar}</span></td>
             <td><button onclick="event.stopPropagation(); sil('${item.id}')" style="background:#dc2626; border:none; color:#fff; border-radius:4px; padding:4px 8px; cursor:pointer;">Sil</button></td>
           </tr>
@@ -656,6 +676,46 @@
         event.target.style.display = "none";
       }
     };
+
+    async function gorselYukle() {
+      const input = document.getElementById("gorsel-input");
+      const durum = document.getElementById("gorsel-durum");
+      const btn = document.getElementById("gorsel-btn");
+
+      if (!input.files || input.files.length === 0) {
+        durum.textContent = "Lütfen en az bir ekran görüntüsü seçin.";
+        return;
+      }
+
+      const formData = new FormData();
+      for (let i = 0; i < input.files.length; i++) {
+        formData.append("files", input.files[i]);
+      }
+
+      btn.disabled = true;
+      durum.textContent = `${input.files.length} görüntü taranıyor...`;
+
+      try {
+        const res = await fetch('/api/kasa/gorsel-aktar', { method: 'POST', body: formData });
+        const data = await res.json();
+        const eklenen = data.eklenen_adet || 0;
+        const hataAdet = (data.hatalar || []).length;
+        durum.textContent = `${eklenen} varlık kasaya eklendi/güncellendi.` +
+          (hataAdet ? ` ${hataAdet} görüntü okunamadı, tutarları kontrol edin.` : "");
+        input.value = "";
+        loadData();
+      } catch (e) {
+        durum.textContent = "Görüntü işlenirken hata oluştu: " + e;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
 
     loadData();
     setInterval(loadData, 10000);
