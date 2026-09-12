@@ -139,43 +139,21 @@ class FinansKaynakMerkezi:
                 pass
             return {"fiyat": 90.0, "aylik_getiri": 0.0, "yillik_getiri": 0.0}
 
-        # 2. Eğer fon_takip modülü varsa önce onu dene
+        # 2. fon_takip modülü (pytefas tabanlı, TEFAS'ın YENİ API'sini kullanır).
+        # Not: Eskiden burada 3. bir adım olarak tefas.gov.tr/api/DB/BindHistoryInfo'ya
+        # doğrudan istek atılıyordu — bu uç nokta TEFAS'ın 2026 site yenilemesinde
+        # KALICI OLARAK kapatıldı (bağımsız olarak doğrulandı), o yüzden kaldırıldı.
+        # Artık tek gerçek yol fon_takip.fon_bilgisi_getir().
         if fon_takip:
             try:
                 veri = fon_takip.fon_bilgisi_getir(sembol_temiz)
                 if veri and veri.get("fiyat", 0) > 0:
                     return veri
+                return veri  # fiyat 0 olsa da "durum" alanındaki gerçek hata mesajını taşı
             except Exception:
                 pass
 
-        # 3. Doğrudan Takasbank TEFAS Resmi API Sorgusu (Kesin Sonuç)
-        try:
-            url = "https://www.tefas.gov.tr/api/DB/BindHistoryInfo"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer": "https://www.tefas.gov.tr/TarihselVeriler.aspx",
-                "X-Requested-With": "XMLHttpRequest"
-            }
-            payload = {
-                "fontip": "YAT",
-                "fonkod": sembol_temiz
-            }
-            res = requests.post(url, data=payload, headers=headers, timeout=4)
-            if res.status_code == 200:
-                j_data = res.json()
-                if "data" in j_data and len(j_data["data"]) > 0:
-                    son_kayit = j_data["data"][-1]
-                    son_fiyat = float(son_kayit.get("FIYAT", 0.0))
-                    if son_fiyat > 0:
-                        return {
-                            "fiyat": round(son_fiyat, 4),
-                            "aylik_getiri": 0.0,
-                            "yillik_getiri": 0.0
-                        }
-        except Exception:
-            pass
-
-        return {"fiyat": 0.0, "aylik_getiri": 0.0, "yillik_getiri": 0.0}
+        return {"fiyat": 0.0, "aylik_getiri": 0.0, "yillik_getiri": 0.0, "durum": "fon_takip modülü yüklenemedi"}
 
     def doviz_getir(self, sembol="USDTRY"):
         now_str = datetime.now().strftime("%H:%M:%S")

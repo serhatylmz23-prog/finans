@@ -217,14 +217,18 @@ def get_kasa_analiz(
                     fiyat = cekilen_fiyat
                     veri_kaynagi = "TEFAS"
                     veri_kaynagi_guveni = 90.0
-                    # TEFAS gerçekten aylık/yıllık getiri veriyorsa kullan;
-                    # vermiyorsa (0.0 varsayılanı) "-" bırak, uydurma yapma.
-                    if fon_veri.get("aylik_getiri") or fon_veri.get("yillik_getiri"):
-                        aylik_getiri = f"%{fon_veri.get('aylik_getiri', 0.0)}"
-                        yillik_getiri = f"%{fon_veri.get('yillik_getiri', 0.0)}"
+                    # TEFAS gerçekten aylık/yıllık getiri veriyorsa kullan.
+                    # DİKKAT: burada "is not None" kontrolü kasıtlı — 0.0 da
+                    # geçerli bir getiri olabilir (o ay/yıl fon hiç değişmemiş
+                    # olabilir), onu "veri yok" ile karıştırmamak gerekir.
+                    aylik_ham = fon_veri.get("aylik_getiri")
+                    yillik_ham = fon_veri.get("yillik_getiri")
+                    if aylik_ham is not None and yillik_ham is not None:
+                        aylik_getiri = f"%{aylik_ham}"
+                        yillik_getiri = f"%{yillik_ham}"
                 else:
                     fiyat = maliyet
-                    veri_kaynagi = "TEFAS'a ulaşılamadı — son bilinen maliyet"
+                    veri_kaynagi = fon_veri.get("durum", "TEFAS'a ulaşılamadı — son bilinen maliyet")
                     veri_kaynagi_guveni = 40.0
             except Exception:
                 fiyat = maliyet

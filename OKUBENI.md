@@ -196,8 +196,6 @@ klasörü var (eski bir git alt-modül yapısından kalma, içinde yalnızca
 
 
 ## 12 Eylül 2026 (2. tur) — Analiz kalitesi, toplam maliyet, kaynak gösterimi
-
-Bu turda kullanıcının belirttiği "analizler hatalı/sabit geliyor, toplam
 maliyet yok" şikayeti ve daha fazlası doğrulandı ve düzeltildi:
 
 **`analiz_motoru.py`**
@@ -250,6 +248,55 @@ maliyet yok" şikayeti ve daha fazlası doğrulandı ve düzeltildi:
 - "TOPLAM MALİYET" ve "GÜVEN" sütunları tabloya eklendi.
 - "İŞLEM KISITI" rozet metni kaldırıldı (artık öyle bir karar metni motor
   tarafından üretilmiyor).
+
+## 12 Eylül 2026 (3. tur) — TEFAS'ın ölü uç noktası ve KAP yanılsaması düzeltildi
+
+Kullanıcı geri bildirimi: "fon değerleri hâlâ sahte, hâlâ alım fiyatı
+üzerinden değerlendiriliyor" ve "KAP'ta işleme kapalı diyor ama bu KAP'tan
+veri çekmediğini gösteriyor". İkisi de haklıydı, kök nedenleri bulundu:
+
+**TEFAS — kök neden bulundu ve düzeltildi**
+- TEFAS sitesi 2026 Nisan'ında tamamen yeniden yazıldı (Next.js'e geçti) ve
+  önceki turlarda kullanılan `/api/DB/BindHistoryInfo`, `BindHistoryAllocations`,
+  `BindFundInfo` uç noktaları **kalıcı olarak kapatıldı**. Yani `fon_takip.py`
+  aylardır ölü bir adrese istek atıp başarısız oluyor, sessizce
+  `fiyat = maliyet` yedeğine düşüyordu — bu da K/Z'nin hep %0 görünmesine
+  ve "sahte/alım fiyatı üzerinden" izlenimine yol açıyordu.
+- `fon_takip.py` tamamen yeniden yazıldı: artık TEFAS'ın yeni sitesinin
+  kullandığı GERÇEK, kimlik gerektirmeyen resmi uç noktalarına erişen
+  `pytefas` paketini kullanıyor (MIT lisanslı, testli, TEFAS'a karşı haftalık
+  otomatik "canary" testiyle doğrulanıyor). `requirements.txt`'e eklendi.
+- Bilinçli olarak KULLANILMAYAN bir alternatif: `tefasmak` adlı başka bir
+  paket de bulundu ama o, TEFAS'ın bot-koruma sistemini (Akamai) tarayıcı
+  TLS parmak izi taklidiyle aşmaya çalışıyor. Bir kurumun kasıtlı koyduğu
+  erişim engelini atlatmak istenmediği için tercih edilmedi; `pytefas` ise
+  zaten herkese açık/kimliksiz olan yeni uç noktaları kullanıyor, hiçbir
+  engeli aşmıyor.
+- `pytefas` kurulu değilse (henüz `pip install -r requirements.txt`
+  çalıştırılmadıysa) sistem artık SESSİZCE maliyete düşmüyor; `durum`
+  alanında "'pytefas' paketi kurulu değil" diye açıkça yazıyor ve güven
+  skorunu buna göre düşürüyor.
+- Aylık/yıllık fon getirisi de artık gerçek geçmiş fiyat karşılaştırmasından
+  (bugün / ~1 ay önce / ~1 yıl önce, TEFAS'ın kendi günlük verisinden)
+  hesaplanıyor; veri bulunamazsa `None` (uydurma sayı değil) döner ve
+  arayüzde "-" görünür.
+- Bu ortamda ağ erişimi kapalı olduğundan `pytefas`'ı uçtan uca canlı test
+  edemedim — kendi bilgisayarınızda ilk çalıştırmada fon fiyatlarının
+  gerçekten değiştiğini (artık maliyetle birebir aynı olmadığını) kontrol
+  edin, sorun olursa bana gösterin.
+
+**KAP — yanılsama netleştirildi**
+- Önceki "İŞLEM KISITI" / "OLASI LİKİDİTE SORUNU" ifadesi, KAP'a gerçekten
+  bağlanılmış gibi bir izlenim veriyordu; oysa bu uygulama KAP'a veya
+  BIST'in canlı işlem durumuna HİÇBİR ZAMAN bağlanmadı — bu sadece fiyat
+  verisinin bir ay/yıldır neredeyse hiç değişmemesinden çıkarılan bir
+  sezgiydi. Bu artık "DİKKAT / FİYAT VERİSİ DURGUN (KAP'TA DOĞRULANMADI)"
+  olarak yeniden adlandırıldı, açıklamada "bu uygulama KAP'a canlı bağlı
+  değildir, bu yalnızca bir varsayımdır" ifadesi eklendi ve kullanıcının
+  kendi gözüyle kontrol edebilmesi için KAP'ın bildirim arama sayfasına
+  gerçek bir link eklendi (otomatik doldurma garantisi yok, sadece doğru
+  sayfaya götürür — KAP'ın kendisi bir SPA olduğu için sembole göre
+  otomatik önceden filtrelenmiş bir link üretmek mümkün olmadı).
 
 ## Çalıştırma
 

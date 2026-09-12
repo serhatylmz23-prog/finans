@@ -79,15 +79,27 @@ class AnalizMotoru:
         if hareketsiz_mi:
             guven_gerekce.append("fiyat hareketi anormal derecede durgun görünüyor")
 
-        # 1. Olası Likidite Sorunu / Hareketsiz Fiyat (veri temelli, sembole özel sabit liste yok)
+        # 1. Olası Fiyat Durgunluğu (SADECE bir sezgi/varsayımdır — KAP/BIST'e
+        # bağlı bir kontrol DEĞİLDİR. Önceki sürümde bu durum yanıltıcı
+        # biçimde "İŞLEM KISITI" olarak sunuluyordu; bu, gerçekten KAP'a
+        # bağlanıp doğrulanmış izlenimi veriyordu ama böyle bir bağlantı hiç
+        # yoktu/yok. Artık bunu açıkça "veri durgun, KAP'ta doğrulanmadı"
+        # olarak etiketliyoruz ve kullanıcıyı gerçek kaynağa yönlendiriyoruz.
         if hareketsiz_mi and kz_orani < 0:
-            karar = "DİKKAT / OLASI LİKİDİTE SORUNU"
+            karar = "DİKKAT / FİYAT VERİSİ DURGUN (KAP'TA DOĞRULANMADI)"
+            kap_link = f"https://www.kap.org.tr/tr/bildirim-sorgu?sirket={sembol}"
             aciklamalar.append(
-                f"⚠️ <strong>Veri Uyarısı:</strong> {sembol} için son bir ay/yıl getiri verisi neredeyse hiç "
-                "değişmemiş görünüyor. Bu gerçek bir işlem kısıtı (YİP/tahta kapalı) olabileceği gibi, "
-                "veri kaynağının fiyatı güncelleyememesinden de kaynaklanabilir — kesin değildir."
+                f"⚠️ <strong>Veri Uyarısı (varsayım, doğrulanmadı):</strong> {sembol} için son bir ay/yıl "
+                "getiri verisi neredeyse hiç değişmemiş görünüyor. Bu bir işlem kısıtı (YİP/tahta kapalı) "
+                "olabileceği gibi, sadece kullanılan veri kaynağının bu sembolü güncelleyememesinden de "
+                "kaynaklanabilir. <u>Bu uygulama KAP veya BIST'e canlı bağlı değildir</u> — bu yalnızca "
+                "fiyat hareketinden çıkarılan bir sezgidir, gerçek bir doğrulama değildir."
             )
-            aciklamalar.append("💡 <strong>Ajan Görüşü:</strong> Kesin bir aksiyon önermeden önce ilgili aracı kurum ekranından veya BIST/KAP duyurularından işlem durumunu doğrulaman önerilir.")
+            aciklamalar.append(
+                f'🔗 <strong>Kendin doğrula:</strong> <a href="{kap_link}" target="_blank" rel="noopener">'
+                "KAP bildirim arama sayfasını aç</a> ve orada bu sembolü ara (KAP'ın arama kutusunu "
+                "otomatik doldurduğu garanti değildir, link sadece doğru sayfaya götürür)."
+            )
 
         # 2. Derin Zarardaki Varlıklar İçin Matematiksel Maliyet Düşürme
         elif kz_orani <= -20.0:
