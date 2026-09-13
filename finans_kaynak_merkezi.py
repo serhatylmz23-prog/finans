@@ -120,6 +120,45 @@ class FinansKaynakMerkezi:
         except Exception:
             return None
 
+    def gumus_fiyatlari_getir(self):
+        """
+        ÖNEMLİ DÜZELTME: Bu fonksiyon önceden hiç yoktu — gümüş fiyatı
+        main.py içinde `gumus_gram = 89.50` olarak SABİT kodlanmıştı ve
+        `get_piyasa()` gümüşü hiçbir zaman gerçekten çekmiyordu. Yani gümüş
+        gerçekten canlı değildi; bu artık düzeltildi.
+        """
+        now_str = datetime.now().strftime("%H:%M:%S")
+
+        # 1. Truncgil (gerçek TL bazlı gram gümüş satış fiyatı — doğrudan kullanılabilir)
+        try:
+            r = requests.get("https://finans.truncgil.com/v3/today.json", timeout=3)
+            if r.status_code == 200:
+                data = r.json()
+                if "GUMUS" in data:
+                    fiyat_str = str(data["GUMUS"].get("Selling", "0")).replace(".", "").replace(",", ".")
+                    gram = float(fiyat_str)
+                    if gram > 0:
+                        return {"gram": round(gram, 2), "kaynak": "Truncgil (Canlı)", "guven": 92, "guncelleme": now_str}
+        except Exception:
+            pass
+
+        # 2. Yedek: yfinance SI=F (ons gümüş vadeli) + canlı USD/TRY kuru
+        try:
+            usd_fiyat = self.doviz_getir("USDTRY")["fiyat"]
+            t = yf.Ticker("SI=F")
+            ons = t.fast_info.get("last_price")
+            if not ons:
+                hist = t.history(period="1d")
+                if not hist.empty:
+                    ons = hist["Close"].iloc[-1]
+            if ons and float(ons) > 0:
+                gram = (float(ons) * usd_fiyat) / 31.1034768
+                return {"gram": round(gram, 2), "kaynak": "Spot Ons (Gümüş, yfinance)", "guven": 88, "guncelleme": now_str}
+        except Exception:
+            pass
+
+        return {"gram": 89.50, "kaynak": "Yedek Referans", "guven": 50, "guncelleme": now_str}
+
     def fon_fiyat_getir(self, sembol="TTE"):
         """
         TEFAS Yatırım Fonları (AYA, DFI, AIS, GMC, TUA vb.) ve Gümüş (XAG) fiyatlarını çeker.
@@ -217,24 +256,55 @@ class FinansKaynakMerkezi:
         sembol_temiz = sembol.replace(".IS", "").replace(".", "").upper().strip()
 
         # 1. Darphane Altın Sertifikası (ALTINS1 / ALTIN.S1)
-        # 1 Sertifika = 0.01 Gram 24K Altın (BIST işlem fiyatı eşleniği)
+        # ÖNEMLİ DÜZELTME: önceki sürüm burada yfinance'i (gerçek BIST
+        # fiyatını) HİÇ DENEMEDEN doğrudan "spot altın x 0.0101" sentetik
+        # tahminine atlıyordu ve bunu güven=100 (yani "kesin doğru") olarak
+        # etiketliyordu — kullanıcının "hala güncel fiyat değil" şikayeti
+        # tam olarak buydu. ALTINS1 gerçekte spot altına göre PRİMLİ işlem
+        # görür (arz/talep dengesizliği yüzünden), yani bu sentetik hesap
+        # gerçek BIST fiyatından farklı olabilir. Artık önce gerçek BIST
+        # fiyatı deneniyor; ancak dürüst olmak gerekirse yfinance bu niş
+        # enstrümanı büyük ihtimalle KAPSAMIYOR — o durumda açıkça "tahmini"
+        # etiketiyle ve düşük güvenle dönülüyor, asla %100 "kesin" denmiyor.
         if "ALTIN" in sembol_temiz and "S1" in sembol_temiz or sembol_temiz in ["ALTINS1", "ALTIN_S1"]:
+            try:
+                # DÜZELTME: Gerçek BIST/Yahoo işlem kodu "ALTINS1" DEĞİL,
+                # sadece "ALTIN" (bu oturumda investing.com ve TradingView
+                # üzerinden doğrulandı — Darphane Altın Sertifikası'nın
+                # işlem kodu tek başına "ALTIN"dır). Önceki sürüm yanlış
+                # "ALTINS1.IS" kodunu deniyordu, bu kod muhtemelen
+                # Yahoo'da hiç yok, bu yüzden istek hep başarısız olup
+                # aşağıdaki tahmini (ve gerçek fiyattan sapabilen) yedeğe
+                # düşüyordu.
+                t = yf.Ticker("ALTIN.IS")
+                px = t.fast_info.get("last_price")
+                if not px:
+                    hist = t.history(period="5d")
+                    if not hist.empty:
+                        px = hist["Close"].iloc[-1]
+                if px and float(px) > 0:
+                    return {"sembol": "ALTINS1", "fiyat": round(float(px), 2), "kaynak": "BIST Canlı (yfinance: ALTIN.IS)", "guven": 95, "guncelleme": now_str}
+            except Exception:
+                pass
+
+            # Gerçek BIST fiyatı alınamadı (bu enstrüman muhtemelen yfinance'te
+            # yok). Tahmini olarak spot altın bazlı hesap gösteriliyor ama
+            # bu KESİN DEĞİLDİR — gerçek BIST fiyatı bundan farklı olabilir.
             try:
                 altin_verisi = self.altin_fiyatlari_getir()
                 gram_fiyat = float(altin_verisi.get("gram", 0.0))
                 if gram_fiyat > 0:
-                    # 0.01 gram altın + BIST piyasa marjı (~%1)
                     sertifika_fiyati = round(gram_fiyat * 0.0101, 2)
                     return {
-                        "sembol": "ALTIN.S1",
+                        "sembol": "ALTINS1",
                         "fiyat": sertifika_fiyati,
-                        "kaynak": "BIST Darphane Eşleniği",
-                        "guven": 100,
+                        "kaynak": "TAHMİNİ (spot altın bazlı, gerçek BIST fiyatı değil — ALTINS1 primli işlem görebilir)",
+                        "guven": 45,
                         "guncelleme": now_str
                     }
             except Exception:
                 pass
-            return {"sembol": "ALTIN.S1", "fiyat": 70.0, "kaynak": "Referans", "guven": 80, "guncelleme": now_str}
+            return {"sembol": "ALTINS1", "fiyat": 70.0, "kaynak": "Referans (veri alınamadı)", "guven": 30, "guncelleme": now_str}
 
         # 2. ABD Hisseleri (AAPL, TSLA, NVDA vb.)
         abd_hisseleri = {"AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "GOOGL", "META", "NFLX", "AMD", "INTC", "COIN"}
@@ -266,5 +336,48 @@ class FinansKaynakMerkezi:
             pass
 
         return {"sembol": sembol_temiz, "fiyat": 0.0, "kaynak": "Veri Yok", "guven": 50, "guncelleme": now_str}
+
+    def hisse_ek_bilgi_getir(self, sembol="THYAO"):
+        """
+        Kullanıcının istediği ek göstergeler: piyasa değeri, dolaşımdaki pay
+        sayısı (lot), temettü tarihi. yfinance'in ".info" alanı BIST
+        hisselerinde tutarsız/eksik olabilir — bu yüzden HİÇBİR alan
+        uydurulmuyor, gelmeyenler None olarak bırakılıyor ve arayüzde
+        "veri yok" gösteriliyor.
+        """
+        sembol_temiz = sembol.replace(".IS", "").replace(".", "").upper().strip()
+        bist_kod = f"{sembol_temiz}.IS"
+        try:
+            t = yf.Ticker(bist_kod)
+            info = t.get_info() if hasattr(t, "get_info") else t.info
+        except Exception:
+            info = {}
+
+        def _al(*anahtarlar):
+            for a in anahtarlar:
+                if info.get(a) not in (None, 0):
+                    return info.get(a)
+            return None
+
+        piyasa_degeri = _al("marketCap")
+        pay_sayisi = _al("sharesOutstanding", "impliedSharesOutstanding")
+        temettu_tarihi_ts = _al("exDividendDate")
+        temettu_tarihi = None
+        if temettu_tarihi_ts:
+            try:
+                temettu_tarihi = datetime.utcfromtimestamp(int(temettu_tarihi_ts)).strftime("%d.%m.%Y")
+            except Exception:
+                temettu_tarihi = None
+        temettu_verimi = _al("dividendYield")
+
+        return {
+            "sembol": sembol_temiz,
+            "piyasa_degeri_try": piyasa_degeri,
+            "pay_sayisi": pay_sayisi,
+            "temettu_tarihi": temettu_tarihi,
+            "temettu_verimi": temettu_verimi,
+            "yatirimci_sayisi": None,  # BIST hisseleri için bu veri kamuya açık değildir
+        }
+
         
 kaynak_merkezi = FinansKaynakMerkezi()

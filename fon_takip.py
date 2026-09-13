@@ -74,7 +74,12 @@ class FonTakipMerkezi:
                             kod = satir.get("fund_code")
                             fiyat = satir.get("price")
                             if kod and fiyat and float(fiyat) > 0:
-                                sozluk[str(kod).upper().strip()] = float(fiyat)
+                                sozluk[str(kod).upper().strip()] = {
+                                    "fiyat": float(fiyat),
+                                    "yatirimci_sayisi": satir.get("investor_count"),
+                                    "piyasa_degeri": satir.get("portfolio_size"),
+                                    "pay_adedi": satir.get("shares_outstanding"),
+                                }
                     self._gun_cache[anahtar] = sozluk
                     self._gun_cache_zaman[anahtar] = simdi
                     if sozluk:
@@ -108,23 +113,29 @@ class FonTakipMerkezi:
         for kind in ("YAT", "EMK", "BYF", "GYF", "GSYF"):
             bugun_verisi = self._is_gunu_snapshot(bugun, kind)
             if fon_kodu in bugun_verisi:
-                fiyat = bugun_verisi[fon_kodu]
+                satir = bugun_verisi[fon_kodu]
+                fiyat = satir["fiyat"]
 
                 bir_ay_once = self._is_gunu_snapshot(bugun - timedelta(days=30), kind)
                 bir_yil_once = self._is_gunu_snapshot(bugun - timedelta(days=365), kind)
 
                 aylik = None
                 yillik = None
-                if fon_kodu in bir_ay_once and bir_ay_once[fon_kodu] > 0:
-                    aylik = round(((fiyat - bir_ay_once[fon_kodu]) / bir_ay_once[fon_kodu]) * 100, 2)
-                if fon_kodu in bir_yil_once and bir_yil_once[fon_kodu] > 0:
-                    yillik = round(((fiyat - bir_yil_once[fon_kodu]) / bir_yil_once[fon_kodu]) * 100, 2)
+                if fon_kodu in bir_ay_once and bir_ay_once[fon_kodu]["fiyat"] > 0:
+                    onceki = bir_ay_once[fon_kodu]["fiyat"]
+                    aylik = round(((fiyat - onceki) / onceki) * 100, 2)
+                if fon_kodu in bir_yil_once and bir_yil_once[fon_kodu]["fiyat"] > 0:
+                    onceki = bir_yil_once[fon_kodu]["fiyat"]
+                    yillik = round(((fiyat - onceki) / onceki) * 100, 2)
 
                 res = {
                     "sembol": fon_kodu,
                     "fiyat": round(fiyat, 6),
                     "aylik_getiri": aylik,    # None ise: gerçek 1 ay önceki veri bulunamadı, UYDURULMAZ
                     "yillik_getiri": yillik,  # None ise: gerçek 1 yıl önceki veri bulunamadı, UYDURULMAZ
+                    "yatirimci_sayisi": satir.get("yatirimci_sayisi"),
+                    "piyasa_degeri": satir.get("piyasa_degeri"),
+                    "pay_adedi": satir.get("pay_adedi"),
                     "durum": "Canlı (TEFAS resmi API — pytefas)",
                     "fon_tipi": kind,
                     "guncelleme": now_str,

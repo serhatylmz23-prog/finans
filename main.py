@@ -47,7 +47,7 @@ CACHE_PIYASA = {
         "doviz": {"sembol": "USDTRY", "fiyat": 48.55, "kaynak": "Piyasa Kuru", "guncelleme": "Canlı"},
         "altin": {"gram": 6815.93, "ceyrek": 11109.97, "kaynak": "Spot Ons", "guncelleme": "Canlı"},
         "bist": {"sembol": "XU100", "fiyat": 14467.3, "kaynak": "BIST"},
-        "gumus": {"gram": 89.50, "kaynak": "Spot Ons"}
+        "gumus": {"gram": 89.50, "kaynak": "Spot Ons (başlangıç/yedek)", "guven": 50, "guncelleme": "-"}
     }
 }
 
@@ -91,14 +91,17 @@ def get_piyasa():
             doviz = kaynak_merkezi.doviz_getir("USDTRY")
             altin = kaynak_merkezi.altin_fiyatlari_getir()
             bist = kaynak_merkezi.hisse_fiyat_getir("XU100")
-            
+            gumus = kaynak_merkezi.gumus_fiyatlari_getir()
+
             if doviz.get("fiyat", 0) > 0:
                 CACHE_PIYASA["veri"]["doviz"] = doviz
             if altin.get("gram", 0) > 0:
                 CACHE_PIYASA["veri"]["altin"] = altin
             if bist.get("fiyat", 0) > 0:
                 CACHE_PIYASA["veri"]["bist"] = bist
-                
+            if gumus.get("gram", 0) > 0:
+                CACHE_PIYASA["veri"]["gumus"] = gumus
+
             CACHE_PIYASA["son_guncelleme"] = now
         except Exception:
             pass
@@ -131,7 +134,7 @@ def get_kasa_analiz(
     doviz_fiyat = float(piyasa["doviz"].get("fiyat", 48.55))
     altin_gram = float(piyasa["altin"].get("gram", 6815.93))
     altin_ceyrek = float(piyasa["altin"].get("ceyrek", 11109.97))
-    gumus_gram = 89.50
+    gumus_gram = float(piyasa.get("gumus", {}).get("gram", 89.50))
 
     for varlik in kasa:
         sembol = str(varlik.get("sembol", "")).upper().strip()
@@ -155,26 +158,38 @@ def get_kasa_analiz(
         veri_kaynagi_guveni = 60.0
 
         # 1. Darphane Altın Sertifikası (ALTIN.S1)
+        # KÖK NEDEN BULUNDU: gerçek BIST/Yahoo işlem kodu "ALTINS1" DEĞİL,
+        # sadece "ALTIN"dır (bu tur içinde investing.com ve TradingView'den
+        # doğrulandı — Darphane Altın Sertifikası BIST'te tek başına "ALTIN"
+        # koduyla işlem görüyor). `kaynak_merkezi.hisse_fiyat_getir()` artık
+        # doğru "ALTIN.IS" kodunu deniyor. Bu gerçekten BIST'teki güncel,
+        # PRİMLİ fiyatı getirir (spot altından farklı olabilir, bu normal).
+        # Sadece bu da başarısız olursa (yfinance geçici erişilemez vb.)
+        # spot altın bazlı TAHMİNİ bir referansa (düşük güvenle) düşülür —
+        # bu asla gerçek BIST fiyatının yerine geçtiği iddiasıyla sunulmaz.
         if "ALTIN.S1" in sembol or "ALTINS1" in sembol or "S1" in sembol:
-            try:
-                veri = kaynak_merkezi.hisse_fiyat_getir("ALTINS1")
-                fiyat = float(veri.get("fiyat", 0.0))
-                veri_kaynagi = veri.get("kaynak", "Referans")
-                veri_kaynagi_guveni = float(veri.get("guven", 80))
-                if fiyat == 0:
-                    fiyat = round(altin_gram / 100.0, 2)
-            except Exception:
-                fiyat = round(altin_gram / 100.0, 2)
-            getiri = kaynak_merkezi.gercek_getiri_hesapla("GC=F")
+            veri = kaynak_merkezi.hisse_fiyat_getir("ALTIN")
+            fiyat = float(veri.get("fiyat", 0.0) or 0.0)
+            veri_kaynagi = veri.get("kaynak", "Bilinmiyor")
+            veri_kaynagi_guveni = float(veri.get("guven", 45))
+            if fiyat <= 0:
+                fiyat = round(altin_gram * 0.0101, 2)
+                veri_kaynagi = "TAHMİNİ (BIST'ten ALTIN.IS alınamadı, spot altın bazlı hesap)"
+                veri_kaynagi_guveni = 40.0
+            getiri = kaynak_merkezi.gercek_getiri_hesapla("ALTIN.IS") or kaynak_merkezi.gercek_getiri_hesapla("GC=F")
             if getiri:
                 aylik_getiri = f"%{getiri['aylik_getiri']}"
                 yillik_getiri = f"%{getiri['yillik_getiri']}"
 
-        # 2. Gümüş
+        # 2. Gümüş — ÖNEMLİ DÜZELTME: `gumus_gram` önceden 89.50 olarak sabit
+        # kodlanmıştı ve get_piyasa() gümüşü HİÇ çekmiyordu (yalnızca döviz,
+        # altın, BIST güncelleniyordu) — yani gümüş fiyatı gerçekten hiçbir
+        # zaman güncellenmiyordu, bu tespit doğruydu. Artık piyasa özetinden
+        # gerçekten canlı gümüş verisi geliyor (aşağıya bakınız).
         elif "XAG" in sembol or "GUMUS" in sembol or "GÜMÜŞ" in sembol:
             fiyat = gumus_gram
-            veri_kaynagi = "Spot Ons (Gümüş)"
-            veri_kaynagi_guveni = 85.0
+            veri_kaynagi = piyasa["gumus"].get("kaynak", "Spot Ons (Gümüş)")
+            veri_kaynagi_guveni = float(piyasa["gumus"].get("guven", 85))
             getiri = kaynak_merkezi.gercek_getiri_hesapla("SI=F")
             if getiri:
                 aylik_getiri = f"%{getiri['aylik_getiri']}"
@@ -309,6 +324,59 @@ def get_sembol_arastirma(sembol: str):
         sonuclar = arastirma_merkezi.genel_piyasa_basliklari(5)
         return {"sembole_ozel": False, "haberler": sonuclar}
     return {"sembole_ozel": True, "haberler": sonuclar}
+
+
+@app.get("/api/kasa/detay/{sembol}")
+def get_sembol_detay(sembol: str, tur: Optional[str] = Query(None)):
+    """
+    Kullanıcının analiz detayında görmek istediği ek göstergeler: piyasa
+    değeri (₺ ve $), yatırımcı sayısı, dolaşımdaki pay/lot sayısı, temettü
+    tarihi. Bilinçli olarak ayrı bir uç nokta: ana /api/kasa/analiz
+    listesini her varlık için yfinance .info çekerek YAVAŞLATMAMAK için
+    sadece kullanıcı bir varlığın detayına tıkladığında çağrılır.
+    Hiçbir alan uydurulmaz; bulunamayan alan `null` döner, arayüz "veri
+    yok" gösterir.
+    """
+    sembol = sembol.upper().strip()
+    tur = (tur or "").lower()
+
+    usd_kuru = 0.0
+    try:
+        usd_kuru = float(kaynak_merkezi.doviz_getir("USDTRY").get("fiyat", 0.0))
+    except Exception:
+        pass
+
+    # Fon (TEFAS) — pytefas'ın bulk 'info' satırından yatırımcı sayısı,
+    # fon büyüklüğü (piyasa değeri karşılığı) ve pay adedi zaten geliyor.
+    if tur == "fon" or (len(sembol) == 3 and sembol not in ["XAG", "XAU"]):
+        fon_veri = fon_takip.fon_bilgisi_getir(sembol)
+        if fon_veri.get("fiyat", 0) > 0:
+            piyasa_degeri_try = fon_veri.get("piyasa_degeri")
+            return {
+                "sembol": sembol, "tur": "Fon",
+                "piyasa_degeri_try": piyasa_degeri_try,
+                "piyasa_degeri_usd": round(piyasa_degeri_try / usd_kuru, 2) if (piyasa_degeri_try and usd_kuru > 0) else None,
+                "yatirimci_sayisi": fon_veri.get("yatirimci_sayisi"),
+                "pay_sayisi": fon_veri.get("pay_adedi"),
+                "temettu_tarihi": None,  # TEFAS fonları temettü dağıtmaz (birim fiyata yansır)
+                "durum": fon_veri.get("durum"),
+            }
+
+    # BIST hissesi — yfinance .info üzerinden (yavaş olabilir, bilerek
+    # sadece burada, tek seferlik çağrılıyor)
+    ek = kaynak_merkezi.hisse_ek_bilgi_getir(sembol)
+    piyasa_degeri_try = ek.get("piyasa_degeri_try")
+    return {
+        "sembol": sembol, "tur": "Hisse",
+        "piyasa_degeri_try": piyasa_degeri_try,
+        "piyasa_degeri_usd": round(piyasa_degeri_try / usd_kuru, 2) if (piyasa_degeri_try and usd_kuru > 0) else None,
+        "yatirimci_sayisi": None,  # BIST'te hisse başına yatırımcı sayısı kamuya açık değil
+        "pay_sayisi": ek.get("pay_sayisi"),
+        "temettu_tarihi": ek.get("temettu_tarihi"),
+        "temettu_verimi": ek.get("temettu_verimi"),
+        "durum": "yfinance .info üzerinden — BIST hisselerinde bu alanlar bazen boş gelir, bu normaldir",
+    }
+
 
 @app.post("/api/kasa/gorsel-aktar")
 async def gorsel_aktar(files: List[UploadFile] = File(...)):

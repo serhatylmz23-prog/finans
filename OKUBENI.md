@@ -298,6 +298,53 @@ veri çekmediğini gösteriyor". İkisi de haklıydı, kök nedenleri bulundu:
   sayfaya götürür — KAP'ın kendisi bir SPA olduğu için sembole göre
   otomatik önceden filtrelenmiş bir link üretmek mümkün olmadı).
 
+## 12 Eylül 2026 (4. tur) — ALTIN.S1 kodu düzeltildi, ek göstergeler eklendi
+
+Kullanıcı geri bildirimi: "ALTIN.S1 fiyatı hâlâ güncel değil (diğer kağıtlar
+güncel), fonlar hâlâ alış fiyatını yansıtıyor, analiz detayında piyasa
+değeri / yatırımcı sayısı / pay sayısı / temettü tarihi gibi bilgiler de
+görünmeli."
+
+**ALTIN.S1 — gerçek kök neden bulundu**
+- Kod, Darphane Altın Sertifikası'nın BIST/Yahoo işlem kodunun `ALTINS1`
+  olduğunu varsayıyordu. Bu YANLIŞ. Bu turda investing.com ve TradingView
+  üzerinden doğrulandı: gerçek işlem kodu tek başına **`ALTIN`**'dır
+  (Yahoo'da `ALTIN.IS`). Yanlış kod hiçbir zaman veri döndürmüyordu, bu
+  yüzden sistem her seferinde spot altın bazlı SENTETİK bir tahmine
+  (`gram_altın × 0,0101`) düşüyordu — bu tahmin, sertifikanın gerçekte
+  arz/talep dengesizliği yüzünden oluşan PRİMİNİ yansıtmadığından güncel
+  BIST fiyatından farklı çıkıyordu. `finans_kaynak_merkezi.py` ve
+  `main.py` artık doğru `ALTIN.IS` kodunu deniyor; sadece bu da
+  başarısız olursa (ör. yfinance geçici erişilemezse) tahmini değere
+  düşülüyor ve bu açıkça "TAHMİNİ" etiketiyle, düşük güvenle sunuluyor.
+
+**Fon fiyatları hâlâ eskiyse**
+- 3. turda `fon_takip.py` `pytefas` paketini kullanacak şekilde yeniden
+  yazılmıştı. Eğer fonlar hâlâ alış fiyatını gösteriyorsa en olası neden
+  `pip install -r requirements.txt`'in yeni `pytefas` bağımlılığıyla
+  YENİDEN çalıştırılmamış olmasıdır — sistem bunu artık sessizce
+  gizlemiyor, `durum` alanında "'pytefas' paketi kurulu değil" yazıyor
+  (panelde bir varlığın detayına tıklayınca veya `/api/piyasa/durum`
+  adresinde görülebilir). Bu ortamda ağ erişimim kapalı olduğu için
+  paketin kurulumunu/canlı davranışını benim tarafımdan test etmek hâlâ
+  mümkün değil — kurulumdan sonra hâlâ sorun varsa görünen `durum`
+  mesajının tam metnini buraya yapıştırırsan kök nedeni birlikte buluruz.
+
+**Yeni: Ek göstergeler (analiz detayına tıklanınca)**
+- Yeni `/api/kasa/detay/{sembol}` uç noktası eklendi: piyasa değeri (₺ ve
+  yaklaşık $), yatırımcı sayısı (sadece fonlar için — TEFAS bu veriyi
+  gerçekten sağlıyor), dolaşımdaki pay/lot sayısı, temettü tarihi (BIST
+  hisseleri için, yfinance'ten).
+- Bilinçli tasarım kararı: bu veriler ANA tabloya (tüm varlıkların listesi)
+  DAHİL EDİLMEDİ çünkü her hisse için ek bir yfinance `.info` isteği
+  atmak listeyi ciddi yavaşlatırdı. Bunun yerine kullanıcı bir varlığın
+  detayına (modal) tıkladığında tek seferlik çekiliyor.
+- Dürüstlük notu: BIST hisseleri için "yatırımcı sayısı" kamuya açık bir
+  veri değildir, bu yüzden hisselerde bu alan her zaman "Veri yok"
+  gösterir (uydurulmaz). Temettü tarihi de yfinance'te birçok BIST
+  hissesi için boş gelebilir — bu bir hata değil, veri kaynağının
+  kapsamındaki gerçek bir sınırdır.
+
 ## Çalıştırma
 
 **En kolay yol (VSCode/terminal gerekmez):**

@@ -273,6 +273,29 @@
         </div>
       </div>
 
+      <!-- EK GÖSTERGELER: piyasa değeri, yatırımcı sayısı, pay/lot sayısı,
+           temettü tarihi. Modal açılınca ayrıca /api/kasa/detay/{sembol}
+           çağrılır ve buraya doldurulur (tablo yavaşlamasın diye ana
+           listeye dahil edilmedi). -->
+      <div id="modal-ek-bilgi" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px; margin-bottom:14px;">
+        <div style="background:#0f172a; padding:10px; border-radius:6px;">
+          <span style="color:var(--text-muted);">Piyasa Değeri:</span>
+          <div id="modal-piyasa-degeri" style="font-weight:bold; margin-top:3px;">Yükleniyor…</div>
+        </div>
+        <div style="background:#0f172a; padding:10px; border-radius:6px;">
+          <span style="color:var(--text-muted);">Yatırımcı Sayısı:</span>
+          <div id="modal-yatirimci" style="font-weight:bold; margin-top:3px;">Yükleniyor…</div>
+        </div>
+        <div style="background:#0f172a; padding:10px; border-radius:6px;">
+          <span style="color:var(--text-muted);">Pay/Lot Sayısı:</span>
+          <div id="modal-pay-sayisi" style="font-weight:bold; margin-top:3px;">Yükleniyor…</div>
+        </div>
+        <div style="background:#0f172a; padding:10px; border-radius:6px;">
+          <span style="color:var(--text-muted);">Temettü Tarihi:</span>
+          <div id="modal-temettu" style="font-weight:bold; margin-top:3px;">Yükleniyor…</div>
+        </div>
+      </div>
+
       <!-- ZENGİN HTML BİÇİMLENDİRMELİ ANALİZ AÇIKLAMASI -->
       <div id="modal-aciklama" style="font-size:13px; line-height:1.6; color:#cbd5e1; background:#0b1322; padding:14px; border-radius:8px; border:1px solid #1e293b;"></div>
     </div>
@@ -638,6 +661,30 @@
       document.getElementById("modal-aciklama").innerHTML = item.analiz_notu || item.ajan_karari || "Pozisyonunuz izleniyor, hedef ve destek seviyeleri korunuyor.";
 
       document.getElementById("analizModal").style.display = "flex";
+
+      // Ek göstergeler (piyasa değeri, yatırımcı sayısı, pay sayısı, temettü)
+      // ayrı bir uç noktadan çekilir — ana tabloyu yavaşlatmaması için
+      // sadece modal açıldığında istek atılır.
+      ["modal-piyasa-degeri", "modal-yatirimci", "modal-pay-sayisi", "modal-temettu"].forEach(id => {
+        document.getElementById(id).innerText = "Yükleniyor…";
+      });
+      fetch(`/api/kasa/detay/${encodeURIComponent(item.sembol)}?tur=${encodeURIComponent(item.tur || '')}`)
+        .then(r => r.json())
+        .then(d => {
+          const fmtSayi = (n) => (n === null || n === undefined) ? "Veri yok" : Number(n).toLocaleString('tr-TR');
+          const pd = d.piyasa_degeri_try
+            ? `₺${fmtSayi(d.piyasa_degeri_try)}` + (d.piyasa_degeri_usd ? ` (~$${fmtSayi(d.piyasa_degeri_usd)})` : '')
+            : "Veri yok";
+          document.getElementById("modal-piyasa-degeri").innerText = pd;
+          document.getElementById("modal-yatirimci").innerText = fmtSayi(d.yatirimci_sayisi);
+          document.getElementById("modal-pay-sayisi").innerText = fmtSayi(d.pay_sayisi);
+          document.getElementById("modal-temettu").innerText = d.temettu_tarihi || "Veri yok";
+        })
+        .catch(() => {
+          ["modal-piyasa-degeri", "modal-yatirimci", "modal-pay-sayisi", "modal-temettu"].forEach(id => {
+            document.getElementById(id).innerText = "Alınamadı";
+          });
+        });
     }
 
     function closeModal(id) {
