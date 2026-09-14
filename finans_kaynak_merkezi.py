@@ -3,6 +3,48 @@ import requests
 import yfinance as yf
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeoutError
+
+# ÖNEMLİ (13 Eylül 2026 turu): Kullanıcı "veri akışı yok" bildirdi — tarayıcı
+# Network sekmesi hem /api/piyasa/ozet hem /api/kasa/analiz isteklerinin
+# SONSUZA KADAR "pending" kaldığını gösterdi. Bu iki uç nokta da farklı
+# şeyler yapıyor ama İKİSİ DE yfinance kullanıyor — ortak nokta bu. Demek ki
+# yfinance'in Yahoo Finance'e attığı istekler bu ağda (muhtemelen ISP/güvenlik
+# duvarı kaynaklı) yanıt vermeden askıda kalıyor ve yfinance'in kendi iç
+# zaman aşımı bu durumda yeterli olmuyor. Çözüm: HER dış çağrıyı ayrı bir
+# iş parçacığında çalıştırıp sert bir üst zaman sınırı (varsayılan 4 sn)
+# koymak — süre dolunca çağrı arka planda öksüz kalsa bile, isteğin
+# KENDİSİ asla sonsuza kadar beklemez, hemen "veri alınamadı" ile devam eder.
+_zaman_asimi_havuzu = ThreadPoolExecutor(max_workers=16)
+
+
+def zaman_siniriyla(fn, saniye=4, *args, **kwargs):
+    """fn()'i en fazla `saniye` saniye bekler; süre dolarsa None döner."""
+    try:
+        gelecek = _zaman_asimi_havuzu.submit(fn, *args, **kwargs)
+        return gelecek.result(timeout=saniye)
+    except _FutureTimeoutError:
+        return None
+    except Exception:
+        return None
+
+
+def _yf_son_fiyat(yf_kodu: str, period: str = "5d"):
+    """
+    yf.Ticker(...).fast_info / .history() çağrısını ayrı bir iş parçacığında,
+    sert bir zaman sınırıyla çalıştırır. Yahoo Finance'e giden bağlantı
+    donarsa (bu turda tespit edildiği gibi) çağıran kod EN FAZLA birkaç
+    saniye bekler, sonsuza kadar değil.
+    """
+    def _getir():
+        t = yf.Ticker(yf_kodu)
+        px = t.fast_info.get("last_price")
+        if not px:
+            hist = t.history(period=period)
+            if not hist.empty:
+                px = hist["Close"].iloc[-1]
+        return float(px) if px else None
+    return zaman_siniriyla(_getir, saniye=4)
 
 # Fon takip modülü
 try:
@@ -92,7 +134,7 @@ class FinansKaynakMerkezi:
         çağıran taraf bu durumda "-" (veri yok) göstermeli, uydurma bir
         sayı basmamalıdır.
         """
-        try:
+        def _getir():
             t = yf.Ticker(yf_sembol)
             hist = t.history(period="1y")
             if hist is None or hist.empty or "Close" not in hist:
@@ -117,8 +159,11 @@ class FinansKaynakMerkezi:
             if aylik is None or yillik is None:
                 return None
             return {"aylik_getiri": aylik, "yillik_getiri": yillik}
-        except Exception:
-            return None
+
+        # Bu çağrı da (diğerleri gibi) zaman sınırıyla korunuyor — geçmiş
+        # fiyat verisi çekmek fast_info'dan daha ağır bir işlem olduğu için
+        # biraz daha geniş bir süre (6 sn) tanınıyor.
+        return zaman_siniriyla(_getir, saniye=6)
 
     def gumus_fiyatlari_getir(self):
         """
@@ -145,12 +190,7 @@ class FinansKaynakMerkezi:
         # 2. Yedek: yfinance SI=F (ons gümüş vadeli) + canlı USD/TRY kuru
         try:
             usd_fiyat = self.doviz_getir("USDTRY")["fiyat"]
-            t = yf.Ticker("SI=F")
-            ons = t.fast_info.get("last_price")
-            if not ons:
-                hist = t.history(period="1d")
-                if not hist.empty:
-                    ons = hist["Close"].iloc[-1]
+            ons = _yf_son_fiyat("SI=F", period="1d")
             if ons and float(ons) > 0:
                 gram = (float(ons) * usd_fiyat) / 31.1034768
                 return {"gram": round(gram, 2), "kaynak": "Spot Ons (Gümüş, yfinance)", "guven": 88, "guncelleme": now_str}
@@ -204,12 +244,7 @@ class FinansKaynakMerkezi:
                     if val:
                         return {"sembol": sembol, "fiyat": float(val), "kaynak": "ExchangeRate-API", "guven": 100, "guncelleme": now_str}
 
-            t = yf.Ticker("USDTRY=X")
-            px = t.fast_info.get("last_price")
-            if not px:
-                hist = t.history(period="1d")
-                if not hist.empty:
-                    px = hist["Close"].iloc[-1]
+            px = _yf_son_fiyat("USDTRY=X", period="1d")
             if px:
                 return {"sembol": sembol, "fiyat": round(float(px), 4), "kaynak": "Piyasa Kuru", "guven": 95, "guncelleme": now_str}
         except Exception:
@@ -229,12 +264,7 @@ class FinansKaynakMerkezi:
                     ons = float(r.json().get("price", 0))
 
             if not ons or ons <= 0:
-                t = yf.Ticker("GC=F")
-                ons = t.fast_info.get("last_price")
-                if not ons:
-                    hist = t.history(period="1d")
-                    if not hist.empty:
-                        ons = hist["Close"].iloc[-1]
+                ons = _yf_son_fiyat("GC=F", period="1d")
 
             if ons and float(ons) > 0:
                 gram = (float(ons) * usd_fiyat) / 31.1034768
@@ -267,25 +297,9 @@ class FinansKaynakMerkezi:
         # enstrümanı büyük ihtimalle KAPSAMIYOR — o durumda açıkça "tahmini"
         # etiketiyle ve düşük güvenle dönülüyor, asla %100 "kesin" denmiyor.
         if "ALTIN" in sembol_temiz and "S1" in sembol_temiz or sembol_temiz in ["ALTINS1", "ALTIN_S1"]:
-            try:
-                # DÜZELTME: Gerçek BIST/Yahoo işlem kodu "ALTINS1" DEĞİL,
-                # sadece "ALTIN" (bu oturumda investing.com ve TradingView
-                # üzerinden doğrulandı — Darphane Altın Sertifikası'nın
-                # işlem kodu tek başına "ALTIN"dır). Önceki sürüm yanlış
-                # "ALTINS1.IS" kodunu deniyordu, bu kod muhtemelen
-                # Yahoo'da hiç yok, bu yüzden istek hep başarısız olup
-                # aşağıdaki tahmini (ve gerçek fiyattan sapabilen) yedeğe
-                # düşüyordu.
-                t = yf.Ticker("ALTIN.IS")
-                px = t.fast_info.get("last_price")
-                if not px:
-                    hist = t.history(period="5d")
-                    if not hist.empty:
-                        px = hist["Close"].iloc[-1]
-                if px and float(px) > 0:
-                    return {"sembol": "ALTINS1", "fiyat": round(float(px), 2), "kaynak": "BIST Canlı (yfinance: ALTIN.IS)", "guven": 95, "guncelleme": now_str}
-            except Exception:
-                pass
+            px = _yf_son_fiyat("ALTIN.IS")
+            if px and float(px) > 0:
+                return {"sembol": "ALTINS1", "fiyat": round(float(px), 2), "kaynak": "BIST Canlı (yfinance: ALTIN.IS)", "guven": 95, "guncelleme": now_str}
 
             # Gerçek BIST fiyatı alınamadı (bu enstrüman muhtemelen yfinance'te
             # yok). Tahmini olarak spot altın bazlı hesap gösteriliyor ama
@@ -322,18 +336,9 @@ class FinansKaynakMerkezi:
 
         # 3. Standart BIST Hisseleri (THYAO, ASELS, EKOS, SASA, DARDL vb.)
         bist_kod = f"{sembol_temiz}.IS"
-        try:
-            t = yf.Ticker(bist_kod)
-            px = t.fast_info.get("last_price")
-            if not px:
-                hist = t.history(period="5d")
-                if not hist.empty:
-                    px = hist["Close"].iloc[-1]
-
-            if px and float(px) > 0:
-                return {"sembol": sembol_temiz, "fiyat": round(float(px), 2), "kaynak": "BIST Canlı", "guven": 95, "guncelleme": now_str}
-        except Exception:
-            pass
+        px = _yf_son_fiyat(bist_kod, period="5d")
+        if px and float(px) > 0:
+            return {"sembol": sembol_temiz, "fiyat": round(float(px), 2), "kaynak": "BIST Canlı", "guven": 95, "guncelleme": now_str}
 
         return {"sembol": sembol_temiz, "fiyat": 0.0, "kaynak": "Veri Yok", "guven": 50, "guncelleme": now_str}
 
@@ -343,15 +348,17 @@ class FinansKaynakMerkezi:
         sayısı (lot), temettü tarihi. yfinance'in ".info" alanı BIST
         hisselerinde tutarsız/eksik olabilir — bu yüzden HİÇBİR alan
         uydurulmuyor, gelmeyenler None olarak bırakılıyor ve arayüzde
-        "veri yok" gösteriliyor.
+        "veri yok" gösteriliyor. `.info`/`.get_info()` özellikle ağır bir
+        çağrı olduğu için bu da zaman sınırıyla korunuyor.
         """
         sembol_temiz = sembol.replace(".IS", "").replace(".", "").upper().strip()
         bist_kod = f"{sembol_temiz}.IS"
-        try:
+
+        def _getir_info():
             t = yf.Ticker(bist_kod)
-            info = t.get_info() if hasattr(t, "get_info") else t.info
-        except Exception:
-            info = {}
+            return t.get_info() if hasattr(t, "get_info") else t.info
+
+        info = zaman_siniriyla(_getir_info, saniye=6) or {}
 
         def _al(*anahtarlar):
             for a in anahtarlar:

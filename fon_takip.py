@@ -29,9 +29,29 @@ güven skoru ile işaretler.
 """
 import time
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeoutError
 
 CACHE_SURESI_SN = 300       # anlık fiyat önbelleği: 5 dakika
 GUNLUK_SNAPSHOT_TTL_SN = 6 * 3600  # geçmiş gün verisi değişmez, 6 saat yeterli
+
+# ÖNEMLİ (13 Eylül 2026 turu — "veri akışı yok" hatası): yfinance için
+# uygulanan aynı kök nedenli düzeltme burada da gerekli. `pytefas`'ın TEFAS'a
+# attığı istek de bazı ağlarda yanıt almadan askıda kalabilir (özellikle ilk
+# "warmup" GET'inde çerezler alınamazsa). Her `Crawler.fetch()` çağrısı artık
+# ayrı bir iş parçacığında, sert bir üst zaman sınırıyla çalıştırılıyor —
+# süre dolarsa çağrı arka planda öksüz kalsa bile istek asla sonsuza kadar
+# beklemez.
+_tefas_zaman_asimi_havuzu = ThreadPoolExecutor(max_workers=8)
+
+
+def _tefas_zaman_siniriyla(fn, saniye=10, *args, **kwargs):
+    try:
+        gelecek = _tefas_zaman_asimi_havuzu.submit(fn, *args, **kwargs)
+        return gelecek.result(timeout=saniye)
+    except _FutureTimeoutError:
+        return None
+    except Exception:
+        return None
 
 try:
     from pytefas import Crawler as _TefasCrawler
@@ -67,7 +87,7 @@ class FonTakipMerkezi:
                     return self._gun_cache[anahtar]
             else:
                 try:
-                    df = self._crawler.fetch(anahtar[0], columns="info", kind=kind)
+                    df = _tefas_zaman_siniriyla(self._crawler.fetch, 10, anahtar[0], columns="info", kind=kind)
                     sozluk = {}
                     if df is not None and len(df) > 0:
                         for _, satir in df.iterrows():

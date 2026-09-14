@@ -345,6 +345,40 @@ görünmeli."
   hissesi için boş gelebilir — bu bir hata değil, veri kaynağının
   kapsamındaki gerçek bir sınırdır.
 
+## 13 Eylül 2026 (5. tur) — "Veri akışı yok" / sonsuz "pending" istekler çözüldü
+
+Kullanıcı ekran görüntüsü paylaştı: tarayıcı Network sekmesinde hem
+`/api/piyasa/ozet` hem `/api/kasa/analiz` istekleri **sonsuza kadar
+"pending"** kalıyordu, konsolda hiç hata yoktu, sayfa "Veriler
+yükleniyor..." de takılı kalıyordu.
+
+**Kök neden:** `yfinance` kütüphanesi Yahoo Finance'e gitmeden önce bir
+"crumb/cookie" isteği atıyor. Bu istek bazı ağlardan (özellikle görünüşe
+göre kullanıcının ağından) YANIT ALMADAN SONSUZA KADAR ASILI KALABİLİYOR —
+exception fırlatmıyor, sadece hiç dönmüyor. Kodun hiçbir yerinde buna karşı
+sert bir üst zaman sınırı yoktu; `get_piyasa()` hem `/api/piyasa/ozet`'in
+hem `/api/kasa/analiz`'in en başında çağrıldığı için TEK bir asılı yfinance
+çağrısı ikisini birden süresiz kilitliyordu — tam ekran görüntüsünde
+görülen belirtiydi.
+
+**Düzeltme:** Artık HER dış çağrı (yfinance VE pytefas) ayrı bir iş
+parçacığında, sert bir üst süre sınırıyla (`zaman_siniriyla()` /
+`_tefas_zaman_siniriyla()`, genelde 4-10 sn) çalıştırılıyor. Süre dolarsa
+çağrı arka planda öksüz kalmaya devam etse bile, çağıran kod hemen `None`
+alıp yedek değere düşüyor — kullanıcı arayüzü artık asla kilitlenmiyor,
+en kötü ihtimalle birkaç saniye içinde "veri alınamadı" gösteriyor.
+Bu turda hem gerçek bir zaman aşımı senaryosuyla (30 sn uyuyan sahte
+fonksiyon) hem yfinance hem pytefas için test edildi — ikisi de 2 saniye
+içinde doğru şekilde `None` döndü.
+
+Bu ortamda gerçek Yahoo/TEFAS bağlantısını test edemedim (ağ kapalı) —
+ama artık en kötü senaryoda bile uygulama birkaç saniye içinde yanıt
+verecek, sonsuza kadar beklemeyecek. Kurup denedikten sonra hâlâ "veri
+alınamadı" görüyorsan bu normal olabilir (ağın gerçekten bu kaynaklara
+erişemiyor olabilir) — o durumda VPN/farklı ağ denemek ya da
+`EXCHANGE_RATE_API_KEY` / `FINNHUB_API_KEY` gibi alternatif API
+anahtarlarından birini `.env.local`'e eklemek gerekebilir.
+
 ## Çalıştırma
 
 **En kolay yol (VSCode/terminal gerekmez):**
