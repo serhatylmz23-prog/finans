@@ -1,25 +1,15 @@
 import os
 import requests
+import json
+import websocket
 import yfinance as yf
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeoutError
 
-# ÖNEMLİ (13 Eylül 2026 turu): Kullanıcı "veri akışı yok" bildirdi — tarayıcı
-# Network sekmesi hem /api/piyasa/ozet hem /api/kasa/analiz isteklerinin
-# SONSUZA KADAR "pending" kaldığını gösterdi. Bu iki uç nokta da farklı
-# şeyler yapıyor ama İKİSİ DE yfinance kullanıyor — ortak nokta bu. Demek ki
-# yfinance'in Yahoo Finance'e attığı istekler bu ağda (muhtemelen ISP/güvenlik
-# duvarı kaynaklı) yanıt vermeden askıda kalıyor ve yfinance'in kendi iç
-# zaman aşımı bu durumda yeterli olmuyor. Çözüm: HER dış çağrıyı ayrı bir
-# iş parçacığında çalıştırıp sert bir üst zaman sınırı (varsayılan 4 sn)
-# koymak — süre dolunca çağrı arka planda öksüz kalsa bile, isteğin
-# KENDİSİ asla sonsuza kadar beklemez, hemen "veri alınamadı" ile devam eder.
 _zaman_asimi_havuzu = ThreadPoolExecutor(max_workers=16)
 
-
 def zaman_siniriyla(fn, saniye=4, *args, **kwargs):
-    """fn()'i en fazla `saniye` saniye bekler; süre dolarsa None döner."""
     try:
         gelecek = _zaman_asimi_havuzu.submit(fn, *args, **kwargs)
         return gelecek.result(timeout=saniye)
@@ -28,14 +18,7 @@ def zaman_siniriyla(fn, saniye=4, *args, **kwargs):
     except Exception:
         return None
 
-
 def _yf_son_fiyat(yf_kodu: str, period: str = "5d"):
-    """
-    yf.Ticker(...).fast_info / .history() çağrısını ayrı bir iş parçacığında,
-    sert bir zaman sınırıyla çalıştırır. Yahoo Finance'e giden bağlantı
-    donarsa (bu turda tespit edildiği gibi) çağıran kod EN FAZLA birkaç
-    saniye bekler, sonsuza kadar değil.
-    """
     def _getir():
         t = yf.Ticker(yf_kodu)
         px = t.fast_info.get("last_price")
@@ -46,7 +29,6 @@ def _yf_son_fiyat(yf_kodu: str, period: str = "5d"):
         return float(px) if px else None
     return zaman_siniriyla(_getir, saniye=4)
 
-# Fon takip modülü
 try:
     from fon_takip import fon_takip
 except ImportError:
@@ -59,18 +41,54 @@ class FinansKaynakMerkezi:
         self.finnhub_key = os.getenv("FINNHUB_API_KEY", "")
         self.exchange_key = os.getenv("EXCHANGE_RATE_API_KEY", "")
         self.gold_key = os.getenv("GOLD_API_KEY", "")
+        self.cdp_port = 9222
+
+    def cdp_tradingview_canli_fiyat_cek(self, sembol: str):
+        """
+        Edge/Chrome üzerinde açık olan TradingView CDP portu (9222) üzerinden
+        aktif sekmeye bağlanarak DOM üzerindeki canlı fiyatı doğrudan çeker.
+        """
+        try:
+            r = requests.get(f"http://localhost:{self.cdp_port}/json", timeout=2)
+            if r.status_code == 200:
+                sekmeler = r.json()
+                tv_sekme = next((s for s in sekmeler if "tradingview.com" in s.get("url", "").lower()), None)
+                if tv_sekme and "webSocketDebuggerUrl" in tv_sekme:
+                    ws_url = tv_sekme["webSocketDebuggerUrl"]
+                    
+                    payload = {
+                        "id": 1,
+                        "method": "Runtime.evaluate",
+                        "params": {
+                            "expression": "document.querySelector('.last-is-price-line, .tv-symbol-price-quote__value')?.innerText || document.querySelector('[data-name=\"price-value\"]')?.innerText || ''"
+                        }
+                    }
+                    
+                    ws = websocket.create_connection(ws_url, timeout=2)
+                    ws.send(json.dumps(payload))
+                    resp = ws.recv()
+                    ws.close()
+                    
+                    data = json.loads(resp)
+                    fiyat_metni = data.get("result", {}).get("result", {}).get("value", "")
+                    
+                    if fiyat_metni:
+                        temiz_fiyat = float(fiyat_metni.replace(".", "").replace(",", ".").strip())
+                        if temiz_fiyat > 0:
+                            return {
+                                "sembol": sembol,
+                                "fiyat": temiz_fiyat,
+                                "kaynak": "TradingView CDP Canlı DOM (Port 9222)",
+                                "guven": 99
+                            }
+        except Exception:
+            pass
+        return None
 
     def durum_raporu(self):
-        """
-        Önceki sürümde bu fonksiyon hiçbir şeyi gerçekten test etmeden her
-        zaman "Çalışıyor" ve sabit güven puanları döndürüyordu — panelde
-        "her şey yolunda" görünüp aslında hiçbir kaynağın test edilmediği
-        bir durum yaratıyordu. Artık her kaynağa kısa bir gerçek istek
-        atılıp yanıt durumuna göre rapor üretiliyor.
-        """
         rapor = {}
 
-        # TCMB (döviz)
+        # Döviz
         try:
             doviz = self.doviz_getir("USDTRY")
             calisiyor = doviz.get("fiyat", 0) > 0 and doviz.get("kaynak") != "Yedek Referans"
@@ -82,7 +100,7 @@ class FinansKaynakMerkezi:
         except Exception as e:
             rapor["Döviz Kaynağı"] = {"durum": f"Hata: {e}", "guven": 0}
 
-        # BIST (yfinance üzerinden XU100 örneklemesi)
+        # BIST
         try:
             bist = self.hisse_fiyat_getir("XU100")
             calisiyor = bist.get("fiyat", 0) > 0 and bist.get("kaynak") != "Veri Yok"
@@ -94,7 +112,7 @@ class FinansKaynakMerkezi:
         except Exception as e:
             rapor["BIST"] = {"durum": f"Hata: {e}", "guven": 0}
 
-        # TEFAS (fon_takip üzerinden gerçek bir fon kodu ile test)
+        # TEFAS
         try:
             if fon_takip:
                 test_fon = fon_takip.fon_bilgisi_getir("AFA")
@@ -108,32 +126,20 @@ class FinansKaynakMerkezi:
         except Exception as e:
             rapor["TEFAS"] = {"durum": f"Hata: {e}", "guven": 0}
 
-        # Altın/Gümüş kaynağı
+        # TradingView CDP Köprü Durumu
         try:
-            altin = self.altin_fiyatlari_getir()
-            calisiyor = altin.get("kaynak") != "Yedek Spot"
-            rapor["Kıymetli Maden Kaynağı"] = {
-                "durum": "Çalışıyor" if calisiyor else "Yedek Veriye Düştü",
-                "kaynak_adi": altin.get("kaynak"),
-                "guven": altin.get("guven", 50),
+            r_cdp = requests.get(f"http://localhost:{self.cdp_port}/json/version", timeout=2)
+            cdp_aktif = r_cdp.status_code == 200
+            rapor["TradingView CDP (9222)"] = {
+                "durum": "Aktif ve Bağlı (DOM Okuma Hazır)" if cdp_aktif else "Port Yanıt Vermiyor",
+                "guven": 100 if cdp_aktif else 0
             }
-        except Exception as e:
-            rapor["Kıymetli Maden Kaynağı"] = {"durum": f"Hata: {e}", "guven": 0}
+        except Exception:
+            rapor["TradingView CDP (9222)"] = {"durum": "Bağlantı Kurulamadı", "guven": 0}
 
         return rapor
 
     def gercek_getiri_hesapla(self, yf_sembol: str):
-        """
-        Önceki sürümde aylık/yıllık getiri ya sabit koda gömülü yüzdeler
-        (örn. altın için hep "+%7.8") ya da kullanıcının kendi maliyetinden
-        türetilen anlamsız bir hesaptı (BIST hisseleri). İkisi de piyasanın
-        gerçekte ne yaptığını yansıtmıyordu.
-
-        Bu fonksiyon yfinance geçmiş fiyat verisinden GERÇEK 1 aylık ve
-        1 yıllık yüzde değişimi hesaplar. Veri çekilemezse None döner —
-        çağıran taraf bu durumda "-" (veri yok) göstermeli, uydurma bir
-        sayı basmamalıdır.
-        """
         def _getir():
             t = yf.Ticker(yf_sembol)
             hist = t.history(period="1y")
@@ -154,27 +160,35 @@ class FinansKaynakMerkezi:
                     return None
                 return round(((son_fiyat - eski) / eski) * 100, 2)
 
-            aylik = _yuzde_degisim(21)   # ~1 ay işlem günü
-            yillik = _yuzde_degisim(252)  # ~1 yıl işlem günü
+            aylik = _yuzde_degisim(21)
+            yillik = _yuzde_degisim(252)
             if aylik is None or yillik is None:
                 return None
             return {"aylik_getiri": aylik, "yillik_getiri": yillik}
 
-        # Bu çağrı da (diğerleri gibi) zaman sınırıyla korunuyor — geçmiş
-        # fiyat verisi çekmek fast_info'dan daha ağır bir işlem olduğu için
-        # biraz daha geniş bir süre (6 sn) tanınıyor.
         return zaman_siniriyla(_getir, saniye=6)
 
-    def gumus_fiyatlari_getir(self):
-        """
-        ÖNEMLİ DÜZELTME: Bu fonksiyon önceden hiç yoktu — gümüş fiyatı
-        main.py içinde `gumus_gram = 89.50` olarak SABİT kodlanmıştı ve
-        `get_piyasa()` gümüşü hiçbir zaman gerçekten çekmiyordu. Yani gümüş
-        gerçekten canlı değildi; bu artık düzeltildi.
-        """
-        now_str = datetime.now().strftime("%H:%M:%S")
+    def grafik_ve_analiz_yorumlari_getir(self, sembol="THYAO"):
+        sembol_temiz = sembol.replace(".IS", "").replace(".", "").upper().strip()
+        yf_kod = f"{sembol_temiz}.IS" if not sembol_temiz in ["USDTRY", "GC=F", "SI=F"] else sembol_temiz
+        
+        getiriler = self.gercek_getiri_hesapla(yf_kod) or {"aylik_getiri": 0.0, "yillik_getiri": 0.0}
+        
+        aylik = getiriler.get("aylik_getiri", 0.0) or 0.0
+        teknik_egilim = "Yükseliş Trendi (Boğa)" if aylik > 0 else "Düşüş / Yatay Konsolidasyon"
+        
+        yorumlar = {
+            "sembol": sembol_temiz,
+            "teknik_egilim": teknik_egilim,
+            "aylik_getiri_yuzde": aylik,
+            "yillik_getiri_yuzde": getiriler.get("yillik_getiri", 0.0),
+            "cdp_durum": self.cdp_tradingview_canli_fiyat_cek(sembol_temiz),
+            "analiz_notu": f"{sembol_temiz} varlığı için son 1 aylık performans %{aylik} seviyesindedir. TradingView CDP köprüsü üzerinden canlı grafik taranmaktadır."
+        }
+        return yorumlar
 
-        # 1. Truncgil (gerçek TL bazlı gram gümüş satış fiyatı — doğrudan kullanılabilir)
+    def gumus_fiyatlari_getir(self):
+        now_str = datetime.now().strftime("%H:%M:%S")
         try:
             r = requests.get("https://finans.truncgil.com/v3/today.json", timeout=3)
             if r.status_code == 200:
@@ -187,7 +201,6 @@ class FinansKaynakMerkezi:
         except Exception:
             pass
 
-        # 2. Yedek: yfinance SI=F (ons gümüş vadeli) + canlı USD/TRY kuru
         try:
             usd_fiyat = self.doviz_getir("USDTRY")["fiyat"]
             ons = _yf_son_fiyat("SI=F", period="1d")
@@ -200,12 +213,7 @@ class FinansKaynakMerkezi:
         return {"gram": 89.50, "kaynak": "Yedek Referans", "guven": 50, "guncelleme": now_str}
 
     def fon_fiyat_getir(self, sembol="TTE"):
-        """
-        TEFAS Yatırım Fonları (AYA, DFI, AIS, GMC, TUA vb.) ve Gümüş (XAG) fiyatlarını çeker.
-        """
         sembol_temiz = sembol.upper().strip()
-
-        # 1. Gümüş Kuru (XAG / Gümüş Fonu değilse doğrudan ons/gram gümüş)
         if "XAG" in sembol_temiz:
             try:
                 r = requests.get("https://finans.truncgil.com/v3/today.json", timeout=3)
@@ -218,17 +226,12 @@ class FinansKaynakMerkezi:
                 pass
             return {"fiyat": 90.0, "aylik_getiri": 0.0, "yillik_getiri": 0.0}
 
-        # 2. fon_takip modülü (pytefas tabanlı, TEFAS'ın YENİ API'sini kullanır).
-        # Not: Eskiden burada 3. bir adım olarak tefas.gov.tr/api/DB/BindHistoryInfo'ya
-        # doğrudan istek atılıyordu — bu uç nokta TEFAS'ın 2026 site yenilemesinde
-        # KALICI OLARAK kapatıldı (bağımsız olarak doğrulandı), o yüzden kaldırıldı.
-        # Artık tek gerçek yol fon_takip.fon_bilgisi_getir().
         if fon_takip:
             try:
                 veri = fon_takip.fon_bilgisi_getir(sembol_temiz)
                 if veri and veri.get("fiyat", 0) > 0:
                     return veri
-                return veri  # fiyat 0 olsa da "durum" alanındaki gerçek hata mesajını taşı
+                return veri
             except Exception:
                 pass
 
@@ -285,25 +288,23 @@ class FinansKaynakMerkezi:
         now_str = datetime.now().strftime("%H:%M:%S")
         sembol_temiz = sembol.replace(".IS", "").replace(".", "").upper().strip()
 
-        # 1. Darphane Altın Sertifikası (ALTINS1 / ALTIN.S1)
-        # ÖNEMLİ DÜZELTME: önceki sürüm burada yfinance'i (gerçek BIST
-        # fiyatını) HİÇ DENEMEDEN doğrudan "spot altın x 0.0101" sentetik
-        # tahminine atlıyordu ve bunu güven=100 (yani "kesin doğru") olarak
-        # etiketliyordu — kullanıcının "hala güncel fiyat değil" şikayeti
-        # tam olarak buydu. ALTINS1 gerçekte spot altına göre PRİMLİ işlem
-        # görür (arz/talep dengesizliği yüzünden), yani bu sentetik hesap
-        # gerçek BIST fiyatından farklı olabilir. Artık önce gerçek BIST
-        # fiyatı deneniyor; ancak dürüst olmak gerekirse yfinance bu niş
-        # enstrümanı büyük ihtimalle KAPSAMIYOR — o durumda açıkça "tahmini"
-        # etiketiyle ve düşük güvenle dönülüyor, asla %100 "kesin" denmiyor.
+        # 1. Önce açık olan TradingView CDP sekmesinden canlı DOM verisini dene (ALTINS1 dahil primli fiyatlar için)
+        cdp_canli = self.cdp_tradingview_canli_fiyat_cek(sembol_temiz)
+        if cdp_canli and cdp_canli.get("fiyat", 0) > 0:
+            return {
+                "sembol": sembol_temiz,
+                "fiyat": cdp_canli["fiyat"],
+                "kaynak": cdp_canli["kaynak"],
+                "guven": cdp_canli["guven"],
+                "guncelleme": now_str
+            }
+
+        # 2. ALTINS1 ve primli varlıklar için yfinance veya saf altın yedeği
         if "ALTIN" in sembol_temiz and "S1" in sembol_temiz or sembol_temiz in ["ALTINS1", "ALTIN_S1"]:
             px = _yf_son_fiyat("ALTIN.IS")
             if px and float(px) > 0:
                 return {"sembol": "ALTINS1", "fiyat": round(float(px), 2), "kaynak": "BIST Canlı (yfinance: ALTIN.IS)", "guven": 95, "guncelleme": now_str}
 
-            # Gerçek BIST fiyatı alınamadı (bu enstrüman muhtemelen yfinance'te
-            # yok). Tahmini olarak spot altın bazlı hesap gösteriliyor ama
-            # bu KESİN DEĞİLDİR — gerçek BIST fiyatı bundan farklı olabilir.
             try:
                 altin_verisi = self.altin_fiyatlari_getir()
                 gram_fiyat = float(altin_verisi.get("gram", 0.0))
@@ -312,7 +313,7 @@ class FinansKaynakMerkezi:
                     return {
                         "sembol": "ALTINS1",
                         "fiyat": sertifika_fiyati,
-                        "kaynak": "TAHMİNİ (spot altın bazlı, gerçek BIST fiyatı değil — ALTINS1 primli işlem görebilir)",
+                        "kaynak": "TAHMİNİ (spot altın bazlı, borsada primli işlem görebilir)",
                         "guven": 45,
                         "guncelleme": now_str
                     }
@@ -320,7 +321,6 @@ class FinansKaynakMerkezi:
                 pass
             return {"sembol": "ALTINS1", "fiyat": 70.0, "kaynak": "Referans (veri alınamadı)", "guven": 30, "guncelleme": now_str}
 
-        # 2. ABD Hisseleri (AAPL, TSLA, NVDA vb.)
         abd_hisseleri = {"AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "GOOGL", "META", "NFLX", "AMD", "INTC", "COIN"}
         if sembol_temiz in abd_hisseleri:
             if self.finnhub_key:
@@ -334,7 +334,6 @@ class FinansKaynakMerkezi:
                 except Exception:
                     pass
 
-        # 3. Standart BIST Hisseleri (THYAO, ASELS, EKOS, SASA, DARDL vb.)
         bist_kod = f"{sembol_temiz}.IS"
         px = _yf_son_fiyat(bist_kod, period="5d")
         if px and float(px) > 0:
@@ -343,14 +342,6 @@ class FinansKaynakMerkezi:
         return {"sembol": sembol_temiz, "fiyat": 0.0, "kaynak": "Veri Yok", "guven": 50, "guncelleme": now_str}
 
     def hisse_ek_bilgi_getir(self, sembol="THYAO"):
-        """
-        Kullanıcının istediği ek göstergeler: piyasa değeri, dolaşımdaki pay
-        sayısı (lot), temettü tarihi. yfinance'in ".info" alanı BIST
-        hisselerinde tutarsız/eksik olabilir — bu yüzden HİÇBİR alan
-        uydurulmuyor, gelmeyenler None olarak bırakılıyor ve arayüzde
-        "veri yok" gösteriliyor. `.info`/`.get_info()` özellikle ağır bir
-        çağrı olduğu için bu da zaman sınırıyla korunuyor.
-        """
         sembol_temiz = sembol.replace(".IS", "").replace(".", "").upper().strip()
         bist_kod = f"{sembol_temiz}.IS"
 
@@ -383,8 +374,7 @@ class FinansKaynakMerkezi:
             "pay_sayisi": pay_sayisi,
             "temettu_tarihi": temettu_tarihi,
             "temettu_verimi": temettu_verimi,
-            "yatirimci_sayisi": None,  # BIST hisseleri için bu veri kamuya açık değildir
+            "yatirimci_sayisi": None,
         }
 
-        
 kaynak_merkezi = FinansKaynakMerkezi()

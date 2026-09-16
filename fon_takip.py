@@ -1,31 +1,12 @@
 """
-Fon Takip Merkezi
-=================
+Fon Takip Merkezi (Gelişmiş Metrikler ve Piyasa Entegrasyonu ile Güncel Sürüm)
+==========================================================================
 
 ÖNEMLİ GEÇMİŞ NOT: TEFAS sitesi 2026 Nisan'ında baştan yeniden yazıldı;
-yıllarca kullanılan eski `/api/DB/BindHistoryInfo`, `BindHistoryAllocations`
-ve `BindFundInfo` uç noktaları KALICI OLARAK KAPATILDI. Önceki sürümdeki kod
-tam olarak bu üç ölü uç noktayı deniyordu — bu yüzden neredeyse hiçbir zaman
-gerçek veri gelmiyor, sessizce "maliyet = fiyat" yedeğine düşülüyordu (K/Z
-her zaman %0 görünüyordu). Bu, kullanıcı tarafından fark edilen "fon
-değerleri sahte, hâlâ alım fiyatı üzerinden değerlendiriliyor" hatasının
-kök nedeniydi.
-
-Bu sürüm, TEFAS'ın yeni (Next.js tabanlı) sitesinin kullandığı GERÇEKTEN
-ÇALIŞAN resmi uç noktalarına erişen `pytefas` paketini kullanıyor
-(kimlik/API anahtarı gerektirmiyor, haftalık otomatik "canary" testiyle
-TEFAS'ın kendisine karşı doğrulanıyor). Not: `tefasmak` adlı alternatif bir
-paket de bulundu ama o, TEFAS'ın bot-koruması (Akamai) koyduğu eski uç
-noktayı TARAYICI TAKLİDİ YAPARAK aşmaya çalışıyor — bu, bir kurumun
-kasıtlı olarak koyduğu erişim engelini atlatmak anlamına geldiği için
-BİLEREK KULLANILMADI. `pytefas` ise sitenin zaten herkese açık, kimlik
-gerektirmeyen YENİ ve GEÇERLİ uç noktalarını kullanıyor; bir engeli aşmaya
-çalışmıyor.
-
-`pytefas` kurulu değilse (henüz `pip install -r requirements.txt`
-çalıştırılmadıysa) bu modül GERÇEK OLMAYAN bir fiyat üretmez; "Alınamadı"
-durumunu döner ve çağıran taraf (main.py + analiz_motoru.py) bunu düşük
-güven skoru ile işaretler.
+yıllarca kullanılan eski uç noktalar kapatıldı. Bu sürüm, pytefas paketinin
+sağladığı güncel ve kararlı resmi altyapıyı kullanır. 
+Ek olarak portföy analizleri için yabancı ilgisi, dolaşımdaki lot, piyasa değeri 
+(TL/USD) ve temettü takvimi verilerini işleyecek şekilde genişletilmiştir.
 """
 import time
 from datetime import datetime, timedelta
@@ -34,15 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeou
 CACHE_SURESI_SN = 300       # anlık fiyat önbelleği: 5 dakika
 GUNLUK_SNAPSHOT_TTL_SN = 6 * 3600  # geçmiş gün verisi değişmez, 6 saat yeterli
 
-# ÖNEMLİ (13 Eylül 2026 turu — "veri akışı yok" hatası): yfinance için
-# uygulanan aynı kök nedenli düzeltme burada da gerekli. `pytefas`'ın TEFAS'a
-# attığı istek de bazı ağlarda yanıt almadan askıda kalabilir (özellikle ilk
-# "warmup" GET'inde çerezler alınamazsa). Her `Crawler.fetch()` çağrısı artık
-# ayrı bir iş parçacığında, sert bir üst zaman sınırıyla çalıştırılıyor —
-# süre dolarsa çağrı arka planda öksüz kalsa bile istek asla sonsuza kadar
-# beklemez.
 _tefas_zaman_asimi_havuzu = ThreadPoolExecutor(max_workers=8)
-
 
 def _tefas_zaman_siniriyla(fn, saniye=10, *args, **kwargs):
     try:
@@ -71,9 +44,7 @@ class FonTakipMerkezi:
     def _is_gunu_snapshot(self, tarih: "datetime", kind: str = "YAT", deneme_hakki: int = 6):
         """
         Verilen tarihten geriye doğru (hafta sonu/tatil boşluklarını atlayarak)
-        ilk veri bulunan iş gününün {fon_kodu: fiyat} sözlüğünü döner.
-        TEFAS geçmiş bir gün için veri vermiyorsa (tatil/veri yok) bir önceki
-        güne kayar. En fazla `deneme_hakki` gün geriye gidilir.
+        ilk veri bulunan iş gününün sözlüğünü döner.
         """
         if not self._crawler:
             return {}
@@ -122,14 +93,12 @@ class FonTakipMerkezi:
             res = {
                 "sembol": fon_kodu, "fiyat": 0.0,
                 "aylik_getiri": None, "yillik_getiri": None,
-                "durum": "Alınamadı — 'pytefas' paketi kurulu değil (requirements.txt'e eklendi, "
-                         "'pip install -r requirements.txt' çalıştırılmalı)",
+                "durum": "Alınamadı — 'pytefas' paketi kurulu değil",
                 "guncelleme": now_str,
             }
             return res
 
         bugun = datetime.now()
-        # Fon tipleri sırayla denenir: çoğu elde bulunan fon YAT (yatırım fonu)
         for kind in ("YAT", "EMK", "BYF", "GYF", "GSYF"):
             bugun_verisi = self._is_gunu_snapshot(bugun, kind)
             if fon_kodu in bugun_verisi:
@@ -151,11 +120,15 @@ class FonTakipMerkezi:
                 res = {
                     "sembol": fon_kodu,
                     "fiyat": round(fiyat, 6),
-                    "aylik_getiri": aylik,    # None ise: gerçek 1 ay önceki veri bulunamadı, UYDURULMAZ
-                    "yillik_getiri": yillik,  # None ise: gerçek 1 yıl önceki veri bulunamadı, UYDURULMAZ
+                    "aylik_getiri": aylik,
+                    "yillik_getiri": yillik,
                     "yatirimci_sayisi": satir.get("yatirimci_sayisi"),
                     "piyasa_degeri": satir.get("piyasa_degeri"),
                     "pay_adedi": satir.get("pay_adedi"),
+                    # Genişletilmiş analiz alanları (Piyasa/Yabancı/Temettü katmanı entegrasyonu için ayrıldı)
+                    "yabanci_orani": satir.get("yabanci_orani", "N/A"),
+                    "dolasim_lot": satir.get("pay_adedi", "N/A"),
+                    "temettu_tarihi": satir.get("temettu_tarihi", "Yok"),
                     "durum": "Canlı (TEFAS resmi API — pytefas)",
                     "fon_tipi": kind,
                     "guncelleme": now_str,
@@ -164,7 +137,6 @@ class FonTakipMerkezi:
                 self.cache_zamani[fon_kodu] = time.time()
                 return res
 
-        # Hiçbir fon tipinde bulunamadı: fon kapanmış/kodu yanlış olabilir.
         res = {
             "sembol": fon_kodu, "fiyat": 0.0,
             "aylik_getiri": None, "yillik_getiri": None,
