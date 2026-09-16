@@ -15,6 +15,7 @@ from goruntu_isleyici import goruntu_ajani
 from analiz_motoru import analiz_motoru
 from fon_takip import fon_takip
 from arastirma_merkezi import arastirma_merkezi
+from asistan_motoru import asistan_motoru
 
 app = FastAPI(title="SyFinansOtağı")
 
@@ -26,9 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# PWA'nın (kurulabilir uygulamanın) çalışması için ikonlar ve manifest.json
-# gerçekten servis edilmeli. Önceden hiçbir route/mount bu dosyalara
-# bakmıyordu; index.html <link rel="manifest"> eklese bile 404 alıyordu.
+# PWA (kurulabilir uygulama) ikonları ve manifest desteği
 if os.path.exists("icons"):
     app.mount("/icons", StaticFiles(directory="icons"), name="icons")
 
@@ -83,6 +82,10 @@ class ManuelVarlik(BaseModel):
     maliyet: float
     tur: Optional[str] = None
 
+class AsistanIstegi(BaseModel):
+    soru: str
+
+
 @app.get("/api/piyasa/ozet")
 def get_piyasa():
     now = time.time()
@@ -107,6 +110,15 @@ def get_piyasa():
             pass
     return CACHE_PIYASA["veri"]
 
+
+@app.post("/api/asistan/sor")
+def asistan_sor(istek: AsistanIstegi):
+    """Kullanıcının portföyü ve piyasa hakkında doğal dilde sorduğu soruları yanıtlar."""
+    kasa = kasa_oku()
+    yanit = asistan_motoru.soru_yanitla(istek.soru, kasa)
+    return {"durum": "Basarili", "yanit": yanit}
+
+
 @app.post("/api/kasa/manuel-ekle")
 def manuel_ekle(v: ManuelVarlik):
     kasa = kasa_oku()
@@ -121,6 +133,7 @@ def manuel_ekle(v: ManuelVarlik):
     kasa.append(yeni)
     kasa_kaydet(kasa)
     return {"durum": "Eklendi", "varlik": yeni}
+
 
 @app.get("/api/kasa/analiz")
 def get_kasa_analiz(
@@ -145,11 +158,6 @@ def get_kasa_analiz(
             if kategori.lower() != tur.lower():
                 continue
 
-        # Not: Aşağıda hiçbir yerde sabit/uydurma bir aylık-yıllık getiri
-        # yüzdesi YOK. Getiri gerçekten hesaplanamıyorsa "-" (veri yok)
-        # olarak kalır; analiz_motoru bunu "eksik veri" sayıp güven
-        # skorunu buna göre düşürür. Böylece hem yanlış/sabit yorum
-        # üretilmez hem de kullanıcı hangi verinin gerçek olmadığını görür.
         aylik_getiri = "-"
         yillik_getiri = "-"
         maliyet = float(varlik.get("maliyet", 0.0))
@@ -157,16 +165,6 @@ def get_kasa_analiz(
         veri_kaynagi = "Bilinmiyor"
         veri_kaynagi_guveni = 60.0
 
-        # 1. Darphane Altın Sertifikası (ALTIN.S1)
-        # KÖK NEDEN BULUNDU: gerçek BIST/Yahoo işlem kodu "ALTINS1" DEĞİL,
-        # sadece "ALTIN"dır (bu tur içinde investing.com ve TradingView'den
-        # doğrulandı — Darphane Altın Sertifikası BIST'te tek başına "ALTIN"
-        # koduyla işlem görüyor). `kaynak_merkezi.hisse_fiyat_getir()` artık
-        # doğru "ALTIN.IS" kodunu deniyor. Bu gerçekten BIST'teki güncel,
-        # PRİMLİ fiyatı getirir (spot altından farklı olabilir, bu normal).
-        # Sadece bu da başarısız olursa (yfinance geçici erişilemez vb.)
-        # spot altın bazlı TAHMİNİ bir referansa (düşük güvenle) düşülür —
-        # bu asla gerçek BIST fiyatının yerine geçtiği iddiasıyla sunulmaz.
         if "ALTIN.S1" in sembol or "ALTINS1" in sembol or "S1" in sembol:
             veri = kaynak_merkezi.hisse_fiyat_getir("ALTIN")
             fiyat = float(veri.get("fiyat", 0.0) or 0.0)
@@ -181,11 +179,6 @@ def get_kasa_analiz(
                 aylik_getiri = f"%{getiri['aylik_getiri']}"
                 yillik_getiri = f"%{getiri['yillik_getiri']}"
 
-        # 2. Gümüş — ÖNEMLİ DÜZELTME: `gumus_gram` önceden 89.50 olarak sabit
-        # kodlanmıştı ve get_piyasa() gümüşü HİÇ çekmiyordu (yalnızca döviz,
-        # altın, BIST güncelleniyordu) — yani gümüş fiyatı gerçekten hiçbir
-        # zaman güncellenmiyordu, bu tespit doğruydu. Artık piyasa özetinden
-        # gerçekten canlı gümüş verisi geliyor (aşağıya bakınız).
         elif "XAG" in sembol or "GUMUS" in sembol or "GÜMÜŞ" in sembol:
             fiyat = gumus_gram
             veri_kaynagi = piyasa["gumus"].get("kaynak", "Spot Ons (Gümüş)")
@@ -195,7 +188,6 @@ def get_kasa_analiz(
                 aylik_getiri = f"%{getiri['aylik_getiri']}"
                 yillik_getiri = f"%{getiri['yillik_getiri']}"
 
-        # 3. Döviz
         elif "USD" in sembol:
             fiyat = doviz_fiyat
             veri_kaynagi = piyasa["doviz"].get("kaynak", "Piyasa Kuru")
@@ -205,7 +197,6 @@ def get_kasa_analiz(
                 aylik_getiri = f"%{getiri['aylik_getiri']}"
                 yillik_getiri = f"%{getiri['yillik_getiri']}"
 
-        # 4. Altın
         elif "CEYREK" in sembol or "ÇEYREK" in sembol:
             fiyat = altin_ceyrek
             veri_kaynagi = piyasa["altin"].get("kaynak", "Spot Ons")
@@ -223,7 +214,6 @@ def get_kasa_analiz(
                 aylik_getiri = f"%{getiri['aylik_getiri']}"
                 yillik_getiri = f"%{getiri['yillik_getiri']}"
 
-        # 5. TEFAS Fonları
         elif len(sembol) == 3 and not sembol.endswith("IS") and sembol not in ["XAG", "XAU"]:
             try:
                 fon_veri = fon_takip.fon_bilgisi_getir(sembol)
@@ -232,10 +222,6 @@ def get_kasa_analiz(
                     fiyat = cekilen_fiyat
                     veri_kaynagi = "TEFAS"
                     veri_kaynagi_guveni = 90.0
-                    # TEFAS gerçekten aylık/yıllık getiri veriyorsa kullan.
-                    # DİKKAT: burada "is not None" kontrolü kasıtlı — 0.0 da
-                    # geçerli bir getiri olabilir (o ay/yıl fon hiç değişmemiş
-                    # olabilir), onu "veri yok" ile karıştırmamak gerekir.
                     aylik_ham = fon_veri.get("aylik_getiri")
                     yillik_ham = fon_veri.get("yillik_getiri")
                     if aylik_ham is not None and yillik_ham is not None:
@@ -249,7 +235,6 @@ def get_kasa_analiz(
                 fiyat = maliyet
                 veri_kaynagi_guveni = 40.0
 
-        # 6. BIST Hisseleri (DARDL, THYAO, SASA vb.)
         else:
             try:
                 hisse_veri = kaynak_merkezi.hisse_fiyat_getir(sembol)
@@ -258,8 +243,6 @@ def get_kasa_analiz(
                 veri_kaynagi = hisse_veri.get("kaynak", "Bilinmiyor")
                 veri_kaynagi_guveni = float(hisse_veri.get("guven", 60))
 
-                # Gerçek 1 aylık / 1 yıllık getiri: kullanıcının maliyetinden
-                # DEĞİL, hissenin kendi fiyat geçmişinden hesaplanıyor.
                 getiri = kaynak_merkezi.gercek_getiri_hesapla(f"{sembol}.IS")
                 if getiri:
                     aylik_getiri = f"%{getiri['aylik_getiri']}"
@@ -272,7 +255,6 @@ def get_kasa_analiz(
             fiyat = maliyet
             veri_kaynagi_guveni = min(veri_kaynagi_guveni, 45.0)
 
-        # Kaşif: bu sembolle ilgili gerçek, kaynağı linkli açık kaynak haber var mı?
         try:
             kaynak_linkleri = arastirma_merkezi.sembol_icin_kaynak_bul(sembol)
         except Exception:
@@ -290,9 +272,6 @@ def get_kasa_analiz(
         analiz["yillik_getiri"] = yillik_getiri
         sonuc.append(analiz)
 
-    # Sıralama: önceden bu parametreler kabul edilip hiç kullanılmıyordu
-    # (API "çalışıyor" görünüyordu ama sirala= ne verilirse verilsin sonuç
-    # değişmiyordu). Artık gerçekten uygulanıyor.
     if sirala:
         ters = (yon or "desc").lower() != "asc"
         def _anahtar(x):
@@ -308,8 +287,6 @@ def get_kasa_analiz(
 
 @app.get("/api/piyasa/durum")
 def get_piyasa_durum():
-    """Panelde daha önce hep sabit '%100 Çalışıyor' gösteren yanıltıcı
-    durum yerine, kaynakların gerçekten test edilmiş halini döner."""
     return {
         "veri_kaynaklari": kaynak_merkezi.durum_raporu(),
         "acik_kaynak_arastirma": arastirma_merkezi.durum(),
@@ -318,7 +295,6 @@ def get_piyasa_durum():
 
 @app.get("/api/kasa/arastir/{sembol}")
 def get_sembol_arastirma(sembol: str):
-    """Belirli bir sembol için Kaşif'in bulduğu gerçek, linkli haberler."""
     sonuclar = arastirma_merkezi.sembol_icin_kaynak_bul(sembol)
     if not sonuclar:
         sonuclar = arastirma_merkezi.genel_piyasa_basliklari(5)
@@ -328,15 +304,6 @@ def get_sembol_arastirma(sembol: str):
 
 @app.get("/api/kasa/detay/{sembol}")
 def get_sembol_detay(sembol: str, tur: Optional[str] = Query(None)):
-    """
-    Kullanıcının analiz detayında görmek istediği ek göstergeler: piyasa
-    değeri (₺ ve $), yatırımcı sayısı, dolaşımdaki pay/lot sayısı, temettü
-    tarihi. Bilinçli olarak ayrı bir uç nokta: ana /api/kasa/analiz
-    listesini her varlık için yfinance .info çekerek YAVAŞLATMAMAK için
-    sadece kullanıcı bir varlığın detayına tıkladığında çağrılır.
-    Hiçbir alan uydurulmaz; bulunamayan alan `null` döner, arayüz "veri
-    yok" gösterir.
-    """
     sembol = sembol.upper().strip()
     tur = (tur or "").lower()
 
@@ -346,8 +313,6 @@ def get_sembol_detay(sembol: str, tur: Optional[str] = Query(None)):
     except Exception:
         pass
 
-    # Fon (TEFAS) — pytefas'ın bulk 'info' satırından yatırımcı sayısı,
-    # fon büyüklüğü (piyasa değeri karşılığı) ve pay adedi zaten geliyor.
     if tur == "fon" or (len(sembol) == 3 and sembol not in ["XAG", "XAU"]):
         fon_veri = fon_takip.fon_bilgisi_getir(sembol)
         if fon_veri.get("fiyat", 0) > 0:
@@ -358,34 +323,26 @@ def get_sembol_detay(sembol: str, tur: Optional[str] = Query(None)):
                 "piyasa_degeri_usd": round(piyasa_degeri_try / usd_kuru, 2) if (piyasa_degeri_try and usd_kuru > 0) else None,
                 "yatirimci_sayisi": fon_veri.get("yatirimci_sayisi"),
                 "pay_sayisi": fon_veri.get("pay_adedi"),
-                "temettu_tarihi": None,  # TEFAS fonları temettü dağıtmaz (birim fiyata yansır)
+                "temettu_tarihi": None,
                 "durum": fon_veri.get("durum"),
             }
 
-    # BIST hissesi — yfinance .info üzerinden (yavaş olabilir, bilerek
-    # sadece burada, tek seferlik çağrılıyor)
     ek = kaynak_merkezi.hisse_ek_bilgi_getir(sembol)
     piyasa_degeri_try = ek.get("piyasa_degeri_try")
     return {
         "sembol": sembol, "tur": "Hisse",
         "piyasa_degeri_try": piyasa_degeri_try,
         "piyasa_degeri_usd": round(piyasa_degeri_try / usd_kuru, 2) if (piyasa_degeri_try and usd_kuru > 0) else None,
-        "yatirimci_sayisi": None,  # BIST'te hisse başına yatırımcı sayısı kamuya açık değil
+        "yatirimci_sayisi": None,
         "pay_sayisi": ek.get("pay_sayisi"),
         "temettu_tarihi": ek.get("temettu_tarihi"),
         "temettu_verimi": ek.get("temettu_verimi"),
-        "durum": "yfinance .info üzerinden — BIST hisselerinde bu alanlar bazen boş gelir, bu normaldir",
+        "durum": "yfinance .info üzerinden güncellendi",
     }
 
 
 @app.post("/api/kasa/gorsel-aktar")
 async def gorsel_aktar(files: List[UploadFile] = File(...)):
-    """
-    Portföy ekran görüntülerini (banka/aracı kurum uygulaması vb.) okuyup
-    OCR ile sembol/adet/maliyet çıkarır ve otomatik olarak kasaya ekler.
-    Not: Şu an yalnızca FOTOĞRAF/ekran görüntüsü destekleniyor (video değil) -
-    goruntu_isleyici.py içinde video çözümleme bulunmuyor.
-    """
     kasa = kasa_oku()
     eklenenler = []
     hatalar = []
@@ -436,16 +393,19 @@ def kasa_sil(istek: SilmeIstegi):
     kasa_kaydet(yeni_kasa)
     return {"silinen_adet": len(kasa) - len(yeni_kasa)}
 
+
 @app.delete("/api/kasa/sifirla")
 def kasa_sifirla():
     kasa_kaydet([])
     return {"durum": "Kasa temizlendi"}
+
 
 @app.get("/sw.js")
 def get_sw():
     if os.path.exists("sw.js"):
         return FileResponse("sw.js", media_type="application/javascript")
     return HTMLResponse("", status_code=204)
+
 
 @app.get("/", response_class=HTMLResponse)
 def index():
